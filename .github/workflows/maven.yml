@@ -44,9 +44,10 @@ jobs:
       # JDK 8 跳过已知不兼容的测试（按需增删行）
       - name: Build and test on JDK ${{ matrix.java }}
         run: |
+          set +o histexpand
           EXCLUDES=""
           if [ "${{ matrix.java }}" = "8" ]; then
-            EXCLUDES="-Dtest='!WebSocketIntegrationTest"
+            EXCLUDES="-Dtest=!WebSocketIntegrationTest"
             EXCLUDES="$EXCLUDES,!WebSocketFragmentationTest"
             EXCLUDES="$EXCLUDES,!WebSocketSendStreamTest"
             EXCLUDES="$EXCLUDES,!ChannelContextCoverageTest"
@@ -56,7 +57,7 @@ jobs:
             EXCLUDES="$EXCLUDES,!HttpServerIntegrationTest"
             EXCLUDES="$EXCLUDES,!HttpIntegrationTest"
             EXCLUDES="$EXCLUDES,!HttpServerChannelHandlerIntegrationTest"
-            EXCLUDES="$EXCLUDES'"
+
           fi
           mvn verify -pl wastnet-test -am --batch-mode -Dsurefire.failIfNoSpecifiedTests=false $EXCLUDES
 
