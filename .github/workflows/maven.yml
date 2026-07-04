@@ -3,8 +3,24 @@ name: Java CI
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'SECURITY*'
+      - 'note.txt'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'SECURITY*'
+      - 'note.txt'
+      - '.github/ISSUE_TEMPLATE/**'
 
 jobs:
   test:
@@ -66,13 +82,10 @@ jobs:
       - name: Merge coverage data from all JDKs
         run: |
           mkdir -p merged
-          EXEC_FILES=$(find coverage-data -name "*.exec" | sort | tr '\n' ',')
-          # 使用 jacoco:merge 合并 exec 文件
-          mvn jacoco:merge \
-            -pl wastnet-test \
-            -Djacoco.destFile=$(pwd)/merged/jacoco.exec \
-            -Djacoco.dataFile="$EXEC_FILES" \
-            --batch-mode 2>/dev/null
+          mvn jacoco:merge -pl wastnet-test \
+            -Dmerge.srcDir=$(pwd)/coverage-data \
+            -Dmerge.destFile=$(pwd)/merged/jacoco.exec \
+            --batch-mode
 
       - name: Generate combined report
         run: |

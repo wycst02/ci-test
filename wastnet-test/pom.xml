@@ -99,6 +99,22 @@
                         <phase>test</phase>
                         <goals><goal>report-aggregate</goal></goals>
                     </execution>
+                    <execution>
+                        <id>merge</id>
+                        <phase>none</phase>
+                        <goals><goal>merge</goal></goals>
+                        <configuration>
+                            <fileSets>
+                                <fileSet>
+                                    <directory>${merge.srcDir}</directory>
+                                    <includes>
+                                        <include>**/*.exec</include>
+                                    </includes>
+                                </fileSet>
+                            </fileSets>
+                            <destFile>${merge.destFile}</destFile>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>
