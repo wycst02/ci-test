@@ -89,7 +89,8 @@ jobs:
 
       - name: Generate combined report
         run: |
-          cp merged/jacoco.exec wastnet-test/target/
+          mkdir -p wastnet-test/target
+          cp merged/jacoco.exec wastnet-test/target/jacoco.exec
           mvn jacoco:report-aggregate -pl wastnet-test -am --batch-mode
 
       - name: Upload combined coverage report
