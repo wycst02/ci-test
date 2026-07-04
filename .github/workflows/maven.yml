@@ -50,6 +50,14 @@ jobs:
           name: jacoco-report-jdk-${{ matrix.java }}
           path: wastnet-test/target/site/jacoco-aggregate/jacoco.xml
 
+      # JDK 21 额外上传完整 HTML 报告供下载查看
+      - name: Upload HTML report for download
+        if: matrix.java == '21'
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-coverage-report
+          path: wastnet-test/target/site/jacoco-aggregate/
+
   # 下载所有 XML 报告并上传到 Codecov
   coverage:
     needs: test
