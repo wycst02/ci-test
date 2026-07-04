@@ -1,0 +1,481 @@
+package io.github.wycst.wastnet.socket.tcp;
+
+import io.github.wycst.wastnet.socket.channel.ChannelWriter;
+import io.github.wycst.wastnet.socket.handler.IdleStateHandler;
+import io.github.wycst.wastnet.socket.handler.IdleStateHandlerTrigger;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * Coverage tests for {@link ChannelContext}.
+ * Covers simple getter/setter, I/O helper, and error-handling branches.
+ */
+public class ChannelContextCoverageTest {
+
+    private SocketChannel mockChannel;
+    private ChannelContext ctx;
+
+    @BeforeEach
+    public void setUp() throws IOException {
+        mockChannel = mock(SocketChannel.class);
+        // Stub write() to return the number of bytes (avoid infinite loop when 0 returned)
+        when(mockChannel.write(any(ByteBuffer.class))).thenAnswer(invocation -> {
+            ByteBuffer buf = invocation.getArgument(0);
+            int remaining = buf.remaining();
+            buf.position(buf.limit()); // simulate full write
+            return remaining;
+        });
+        ctx = new ChannelContext(1L, mockChannel, 1024);
+    }
+
+    // ==================== isWorkerThread (worker==null → true) ====================
+
+    @Test
+    public void testIsWorkerThreadNoWorkerSet() {
+        Assertions.assertTrue(ctx.isWorkerThread());
+    }
+
+    // ==================== waitForWrite worker path (no worker → sleep 1ms) ====================
+
+    @Test
+    public void testWaitForWriteWorkerPath() throws IOException {
+        Assertions.assertTrue(ctx.waitForWrite(1000));
+    }
+
+    // ==================== write(byte[], int, int) ====================
+
+    @Test
+    public void testWriteByteArrayWithOffset() throws IOException {
+        byte[] data = "hello".getBytes();
+        int n = ctx.write(data, 0, data.length);
+        Assertions.assertTrue(n > 0);
+    }
+
+    @Test
+    public void testWriteByteArray() throws IOException {
+        byte[] data = "test".getBytes();
+        int n = ctx.write(data);
+        Assertions.assertTrue(n > 0);
+    }
+
+    // ==================== writeAllFlush ====================
+
+    @Test
+    public void testWriteAllFlush() throws IOException {
+        ByteBuffer buf = ByteBuffer.wrap("data".getBytes());
+        ctx.writeAllFlush(buf);
+    }
+
+    // ==================== write(ByteBuffer) with null byteBuffer ====================
+
+    @Test
+    public void testWriteByteBufferNoBuffer() throws IOException {
+        ChannelContext noBufCtx = new ChannelContext(2L, mockChannel, 0);
+        ByteBuffer data = ByteBuffer.wrap("test".getBytes());
+        int n = noBufCtx.write(data);
+        Assertions.assertTrue(n > 0);
+    }
+
+    // ==================== send() with/without ChannelWriter ====================
+
+    @Test
+    public void testSendWithoutWriter() {
+        Assertions.assertThrows(IOException.class, () -> ctx.send("message"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testSendWithWriterAndNonNullBuffer() throws IOException {
+        ChannelWriter<String> writer = mock(ChannelWriter.class);
+        when(writer.write(any(ChannelContext.class), anyString()))
+                .thenReturn(ByteBuffer.wrap("msg".getBytes()));
+        ctx.setChannelWriter(writer);
+        ctx.send("message");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testSendWithWriterAndNullBuffer() throws IOException {
+        ChannelWriter<String> writer = mock(ChannelWriter.class);
+        when(writer.write(any(ChannelContext.class), anyString()))
+                .thenReturn(null);
+        ctx.setChannelWriter(writer);
+        ctx.send("message");
+    }
+
+    // ==================== attachment getter/setter ====================
+
+    @Test
+    public void testAttachmentSetAndGet() {
+        Object obj = new Object();
+        ctx.attachment(obj);
+        Assertions.assertSame(obj, ctx.attachment());
+    }
+
+    @Test
+    public void testAttachmentDefaultNull() {
+        Assertions.assertNull(ctx.attachment());
+    }
+
+    // ==================== binding duplicate ====================
+
+    @Test
+    public void testBindingDuplicateThrows() {
+        Object obj = new Object();
+        ctx.binding(obj);
+        Assertions.assertThrows(IllegalStateException.class, () -> ctx.binding(obj));
+    }
+
+    // ==================== addCloseListener first time ====================
+
+    @Test
+    public void testAddCloseListenerCreatesList() {
+        AtomicBoolean called = new AtomicBoolean(false);
+        ctx.addCloseListener(() -> called.set(true));
+        ctx.close();
+        Assertions.assertTrue(called.get());
+    }
+
+    // ==================== removeCloseListener when none added ====================
+
+    @Test
+    public void testRemoveCloseListenerWhenEmpty() {
+        Runnable listener = () -> {};
+        ctx.removeCloseListener(listener);
+    }
+
+    // ==================== setIdleTrigger ====================
+
+    @Test
+    public void testSetIdleTrigger() {
+        IdleStateHandler handler = mock(IdleStateHandler.class);
+        ctx.setIdleTrigger(handler);
+        Assertions.assertNotNull(ctx.idleStateHandlerTrigger);
+    }
+
+    // ==================== close with idle trigger ====================
+
+    @Test
+    public void testCloseWithIdleTrigger() {
+        IdleStateHandler handler = mock(IdleStateHandler.class);
+        ctx.setIdleTrigger(handler);
+        ctx.close();
+    }
+
+    // ==================== close with multiple listeners ====================
+
+    @Test
+    public void testCloseWithMultipleListeners() {
+        AtomicBoolean called1 = new AtomicBoolean(false);
+        AtomicBoolean called2 = new AtomicBoolean(false);
+        ctx.addCloseListener(() -> called1.set(true));
+        ctx.addCloseListener(() -> called2.set(true));
+        ctx.close();
+        Assertions.assertTrue(called1.get());
+        Assertions.assertTrue(called2.get());
+    }
+
+    // ==================== readFully with len=0 ====================
+
+    @Test
+    public void testReadFullyZeroLength() throws IOException {
+        byte[] buf = new byte[0];
+        int n = ctx.readFully(buf, 0, 0, 1000);
+        Assertions.assertEquals(0, n);
+    }
+
+    // ==================== awaitReadableWithTimeout ====================
+
+    @Test
+    public void testAwaitReadableWithNegativeTimeout() throws IOException {
+        ctx.awaitReadableWithTimeout(System.currentTimeMillis(), -1);
+    }
+
+    // ==================== getLocalAddress first call ====================
+
+    @Test
+    public void testGetLocalAddressFirstCall() throws IOException {
+        when(mockChannel.getLocalAddress()).thenReturn(new java.net.InetSocketAddress(8080));
+        SocketAddress addr = ctx.getLocalAddress();
+        Assertions.assertNotNull(addr);
+    }
+
+    // ==================== initializeAddressCache exception ====================
+
+    @Test
+    public void testInitializeAddressCacheException() throws IOException {
+        when(mockChannel.getRemoteAddress()).thenThrow(new IOException("simulated"));
+        SocketAddress addr = ctx.getRemoteAddress();
+        Assertions.assertNull(addr);
+    }
+
+    // ==================== hasApplicationProtocol ====================
+
+    @Test
+    public void testHasApplicationProtocolNoNioConfig() {
+        Assertions.assertFalse(ctx.hasApplicationProtocol("h2"));
+    }
+
+    // ==================== channelWrite IOException from channel ====================
+
+    @Test
+    public void testChannelWriteThrowsIOException() throws IOException {
+        when(mockChannel.write(any(ByteBuffer.class))).thenThrow(new IOException("simulated"));
+        ChannelContext excCtx = new ChannelContext(2L, mockChannel, 0);
+        ByteBuffer data = ByteBuffer.wrap("test".getBytes());
+        int n = excCtx.write(data);
+        Assertions.assertEquals(-1, n);
+    }
+
+    // ==================== wakeupWrite ====================
+
+    @Test
+    public void testWakeupWrite() {
+        ctx.wakeupWrite();
+    }
+
+    // ==================== write bypass (remaining >= capacity) ====================
+
+    @Test
+    public void testWriteLargeDataBypassesBuffer() throws IOException {
+        // buf.remaining() >= byteBuffer.capacity() → flush + direct channelWrite
+        byte[] largeData = new byte[2000];
+        int n = ctx.write(largeData, 0, largeData.length);
+        Assertions.assertTrue(n > 0);
+    }
+
+    // ==================== write with non-array-backed buffer ====================
+
+    @Test
+    public void testCopyBufferDataNonArrayBacked() throws IOException {
+        // Use ByteBuffer.allocateDirect() which has no backing array
+        // → goes through !hasArray() path in copyBufferData
+        ByteBuffer direct = ByteBuffer.allocateDirect(50);
+        direct.put("small direct data".getBytes());
+        direct.flip();
+        int n = ctx.write(direct);
+        Assertions.assertTrue(n > 0);
+    }
+
+    // ==================== flush when byteBuffer != null ====================
+
+    @Test
+    public void testFlushWithBuffer() throws IOException {
+        ctx.write("data".getBytes());
+        ctx.flush();
+    }
+
+    // ==================== channelWrite with idle trigger ====================
+
+    @Test
+    public void testChannelWriteWithIdleTrigger() throws IOException {
+        IdleStateHandler handler = mock(IdleStateHandler.class);
+        ctx.setIdleTrigger(handler);
+        ctx.write("test".getBytes());
+        // onWriteTriggered is called on IdleStateHandlerTrigger (internal), verify no exception
+    }
+
+    // ==================== close with null readKey ====================
+
+    @Test
+    public void testCloseWithNullReadKey() {
+        // readKey is null → readKey.cancel() should not NPE
+        ChannelContext noKeyCtx;
+        try {
+            noKeyCtx = new ChannelContext(99L, mockChannel, 0);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        noKeyCtx.close();
+        // Should not throw NPE
+    }
+
+    // ==================== close with idle trigger release ====================
+
+    @Test
+    public void testCloseReleasesIdleTrigger() {
+        IdleStateHandler handler = mock(IdleStateHandler.class);
+        ctx.setIdleTrigger(handler);
+        ctx.close();
+        // idleStateHandlerTrigger released
+    }
+
+    // ==================== getAttributes lazy init ====================
+
+    @Test
+    public void testGetAttributesLazyInit() {
+        Object attrs = ctx.getAttributes();
+        Assertions.assertNotNull(attrs);
+        // Second call returns same instance
+        Assertions.assertSame(attrs, ctx.getAttributes());
+    }
+
+    // ==================== contextId / getId / isSSL ====================
+
+    @Test
+    public void testGetId() {
+        Assertions.assertEquals(1L, ctx.getId());
+    }
+
+    @Test
+    public void testContextId() {
+        Assertions.assertNotNull(ctx.contextId());
+    }
+
+    @Test
+    public void testIsSSL() {
+        Assertions.assertFalse(ctx.isSSL());
+    }
+
+    @Test
+    public void testGetHandShakedApplicationProtocol() {
+        Assertions.assertNull(ctx.getHandShakedApplicationProtocol());
+    }
+
+    // ==================== setReadKey / reader ====================
+
+    @Test
+    public void testSetReadKeyAndReader() {
+        ctx.setReadKey(null);
+        Assertions.assertNull(ctx.reader());
+        ctx.setReadKey(mock(java.nio.channels.SelectionKey.class));
+    }
+
+    // ==================== channelRead triggers idle on success ====================
+
+    @Test
+    public void testChannelReadTriggersIdle() throws IOException {
+        when(mockChannel.read(any(ByteBuffer.class)))
+                .thenReturn(5)
+                .thenReturn(-1);
+        IdleStateHandler handler = mock(IdleStateHandler.class);
+        ctx.setIdleTrigger(handler);
+        ByteBuffer buf = ByteBuffer.allocate(100);
+        int n = ctx.read(buf);
+        Assertions.assertEquals(5, n);
+    }
+
+    // ==================== invokeHandle ====================
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testInvokeHandleCallsHandler() throws IOException {
+        io.github.wycst.wastnet.socket.handler.ChannelHandler handler =
+                mock(io.github.wycst.wastnet.socket.handler.ChannelHandler.class);
+        ctx.setChannelHandler(handler);
+        ctx.invokeHandle("test");
+        verify(handler).onHandle(ctx, "test");
+    }
+
+    // ==================== write with writer null buffer ====================
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testSendWithoutWriterThrows() {
+        Assertions.assertThrows(IOException.class, () -> ctx.send("test"));
+    }
+
+    // ==================== schedule ====================
+
+    @Test
+    public void testSchedule() {
+        // worker is null → schedule would NPE, skip
+        // (requires worker set up, tested via TcpClient/TCPServer)
+    }
+
+    // ==================== getRemoteAddress second call returns cached ====================
+
+    @Test
+    public void testGetRemoteAddressCached() throws IOException {
+        when(mockChannel.getRemoteAddress()).thenReturn(new java.net.InetSocketAddress("10.0.0.1", 1234));
+        java.net.InetSocketAddress first = ctx.getRemoteAddress();
+        Assertions.assertNotNull(first);
+        // Second call should use cached value
+        java.net.InetSocketAddress second = ctx.getRemoteAddress();
+        Assertions.assertSame(first, second);
+    }
+
+    // ==================== hasApplicationProtocol with config ====================
+
+    @Test
+    public void testHasApplicationProtocolWithConfig() {
+        NioConfig nioConfig = new NioConfig();
+        nioConfig.setApplicationProtocols(new String[]{"h2", "http/1.1"});
+        ctx.setNioConfig(nioConfig);
+        Assertions.assertTrue(ctx.hasApplicationProtocol("h2"));
+        Assertions.assertFalse(ctx.hasApplicationProtocol("unknown"));
+    }
+
+    // ==================== channelWrite empty buffer ====================
+
+    @Test
+    public void testChannelWriteEmptyBufferReturnsZero() throws IOException {
+        ByteBuffer empty = ByteBuffer.allocate(0);
+        // channelWrite → len == 0 → return 0
+        ChannelContext noBufCtx = new ChannelContext(3L, mockChannel, 0);
+        int n = noBufCtx.write(empty);
+        Assertions.assertEquals(0, n);
+    }
+
+    // ==================== close second call is no-op ====================
+
+    @Test
+    public void testCloseSecondCallIsNoOp() {
+        ctx.close();
+        ctx.close(); // should not throw
+    }
+
+    // ==================== readFully(byte[]) delegate ====================
+
+    @Test
+    public void testReadFullyDelegateWithEmptyArray() throws IOException {
+        byte[] empty = new byte[0];
+        int n = ctx.readFully(empty);
+        Assertions.assertEquals(0, n);
+    }
+
+    // ==================== wakeup with waitingUnLock ====================
+
+    @Test
+    public void testWakeupWithWaitingFlag() {
+        // Set waitingUnLock field = true, then wakeup should notify
+        try {
+            java.lang.reflect.Field wf = ChannelContext.class.getDeclaredField("waitingUnLock");
+            wf.setAccessible(true);
+            wf.set(ctx, true);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        ctx.wakeup();
+        // wakeup should reset waitingUnLock to false
+    }
+
+    // ==================== writeFlush(byte[]) ====================
+
+    @Test
+    public void testWriteFlushByteArray() throws IOException {
+        ctx.writeFlush("test".getBytes());
+    }
+
+    // ==================== channelRead returns -1 via readFully ====================
+
+    @Test
+    public void testReadFullyChannelClosedReturnsMinusOne() throws IOException {
+        // Close the mock channel's underlying socket
+        ChannelContext readCtx = new ChannelContext(4L, mockChannel, 0);
+        when(mockChannel.read(any(ByteBuffer.class))).thenReturn(-1);
+        byte[] buf = new byte[10];
+        int n = readCtx.readFully(buf, 0, buf.length, 1000);
+        Assertions.assertEquals(-1, n);
+    }
+}

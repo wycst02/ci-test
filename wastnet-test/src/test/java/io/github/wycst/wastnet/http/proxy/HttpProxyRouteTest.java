@@ -1,0 +1,185 @@
+package io.github.wycst.wastnet.http.proxy;
+
+import io.github.wycst.wastnet.http.*;
+import io.github.wycst.wastnet.socket.tcp.ChannelContext;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * Unit tests for {@link HttpProxyRoute}.
+ * <p>
+ * Covers constructor URL parsing variants, handle() loop detection and rewrite error,
+ * getRouteInfo(), clear().
+ *
+ * @author wangyc
+ */
+public class HttpProxyRouteTest {
+
+    // ==================== Constructor: URL parsing variants ====================
+
+    @Test
+    public void testConstructorHttpDefaultPort() {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com");
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        Map<String, Object> info = route.getRouteInfo();
+        assertEquals(80, info.get("port"));
+        assertFalse((Boolean) info.get("ssl"));
+    }
+
+    @Test
+    public void testConstructorHttpsDefaultPort() {
+        HttpProxyConfig config = HttpProxyConfig.target("https://example.com");
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        Map<String, Object> info = route.getRouteInfo();
+        assertEquals(443, info.get("port"));
+        assertTrue((Boolean) info.get("ssl"));
+    }
+
+    @Test
+    public void testConstructorCustomPort() {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com:8080");
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        Map<String, Object> info = route.getRouteInfo();
+        assertEquals("http://example.com:8080", info.get("target"));
+        assertEquals(8080, info.get("port"));
+        assertFalse((Boolean) info.get("ssl"));
+    }
+
+    @Test
+    public void testConstructorMalformedUrlThrows() {
+        HttpProxyConfig config = HttpProxyConfig.target("not-a-url");
+        assertThrows(IllegalStateException.class, () -> new HttpProxyRoute(config));
+    }
+
+    @Test
+    public void testConstructorLoopDetectionEnabled() {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com")
+                .loopDetection(true);
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        Map<String, Object> info = route.getRouteInfo();
+        assertTrue((Boolean) info.get("loopDetection"));
+    }
+
+    @Test
+    public void testConstructorLoopDetectionDisabled() {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com")
+                .loopDetection(false);
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        Map<String, Object> info = route.getRouteInfo();
+        assertFalse((Boolean) info.get("loopDetection"));
+    }
+
+    // ==================== handle: loop detection ====================
+
+    /**
+     * Minimal non-abstract subclass for testing handle().
+     */
+    static class TestBaseRequest extends HttpInternalRequest {
+        final Map<String, String> headers = new java.util.LinkedHashMap<String, String>();
+        TestBaseRequest(ChannelContext ctx) { super(ctx); }
+        @Override public HttpMethod getMethod() { return HttpMethod.GET; }
+        @Override public String getUri() { return "/test"; }
+        @Override public String getRequestUri() { return "/test"; }
+        @Override public HttpVersion getHttpVersion() { return HttpVersion.HTTP_1_1; }
+        @Override public String getScheme() { return "http"; }
+        @Override public long getContentLength() { return 0; }
+        @Override public String getContentType() { return null; }
+        @Override public void delegate(ChannelContext ctx) throws Throwable {}
+        @Override public io.github.wycst.wastnet.http.HttpBodyInputStream bodyStream() { return null; }
+        @Override public byte[] getBodyData() { return new byte[0]; }
+        @Override public String getHeader(String name) { return headers.get(name.toLowerCase()); }
+        @Override public boolean containsHeader(String name) { return headers.containsKey(name.toLowerCase()); }
+        @Override public java.util.Set<String> getHeaderNames() { return headers.keySet(); }
+        @Override public String getUriParameter(String name) { return null; }
+        @Override public String getQueryString() { return null; }
+        @Override public StringBuffer getRequestURL() { return null; }
+        @Override public void setRewriteUri(String uri) {}
+        @Override public void setHeader(String key, java.io.Serializable value) { headers.put(key.toLowerCase(), String.valueOf(value)); }
+        @Override public void removeHeader(String key) { headers.remove(key.toLowerCase()); }
+        @Override public Object getRawHeader(String name) { return headers.get(name.toLowerCase()); }
+        @Override protected java.util.List<String> getUriParameterValues(String name) { return null; }
+        @Override protected java.util.Set<String> getUriParameterNames() { return java.util.Collections.emptySet(); }
+        @Override public boolean completed() { return false; }
+    }
+
+    @Test
+    public void testHandleLoopDetectedReturnsEarly() throws Throwable {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com")
+                .loopDetection(true);
+        HttpProxyRoute route = new HttpProxyRoute(config);
+
+        // Read loopMarker via reflection
+        String loopMarker = (String) readField(route, "loopMarker");
+        assertNotNull(loopMarker);
+
+        ChannelContext ctx = mock(ChannelContext.class);
+        TestBaseRequest request = new TestBaseRequest(ctx);
+        request.setHeader(loopMarker, "1");
+
+        HttpResponse response = mock(HttpResponse.class);
+        route.handle("/test", request, response);
+        verify(response).setStatusAndText(HttpStatus.LOOP_DETECTED);
+    }
+
+    // ==================== handle: rewrite rule error ====================
+
+    @Test
+    public void testHandleRewriteErrorReturnsInternalError() throws Throwable {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com")
+                .loopDetection(false)
+                .rewrite(new HttpProxyConfig.RewriteFunction() {
+                    public String rewrite(String path) {
+                        throw new RuntimeException("rewrite failed");
+                    }
+                });
+        HttpProxyRoute route = new HttpProxyRoute(config);
+
+        ChannelContext ctx = mock(ChannelContext.class);
+        TestBaseRequest request = new TestBaseRequest(ctx);
+        HttpResponse response = mock(HttpResponse.class);
+
+        route.handle("/test", request, response);
+        verify(response).setStatusAndText(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // ==================== getRouteInfo ====================
+
+    @Test
+    public void testGetRouteInfo() {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com:8080")
+                .loopDetection(true);
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        Map<String, Object> info = route.getRouteInfo();
+        assertEquals("proxy", info.get("type"));
+        assertEquals("http://example.com:8080", info.get("target"));
+        assertEquals(8080, info.get("port"));
+        assertFalse((Boolean) info.get("ssl"));
+        assertTrue((Boolean) info.get("loopDetection"));
+    }
+
+    // ==================== clear ====================
+
+    @Test
+    public void testClear() {
+        HttpProxyConfig config = HttpProxyConfig.target("http://example.com");
+        HttpProxyRoute route = new HttpProxyRoute(config);
+        route.clear(); // should not throw
+    }
+
+    // ==================== Helper ====================
+
+    private static Object readField(Object target, String name) throws Exception {
+        Class<?> clazz = target.getClass();
+        java.lang.reflect.Field f = null;
+        while (clazz != null && f == null) {
+            try { f = clazz.getDeclaredField(name); } catch (NoSuchFieldException e) { clazz = clazz.getSuperclass(); }
+        }
+        if (f == null) throw new NoSuchFieldException(name);
+        f.setAccessible(true);
+        return f.get(target);
+    }
+}

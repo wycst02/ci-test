@@ -1,0 +1,94 @@
+name: Java CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [8, 11, 17, 21]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test on JDK ${{ matrix.java }}
+        run: mvn verify -pl wastnet-test -am --batch-mode
+
+      # 每个 JDK 的 exec 文件重命名后保存（避免覆盖）
+      - name: Rename coverage file
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          cp wastnet-test/target/jacoco.exec coverage-data/jacoco-${{ matrix.java }}.exec
+
+      - name: Upload coverage data for JDK ${{ matrix.java }}
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: jacoco-${{ matrix.java }}
+          path: coverage-data/jacoco-${{ matrix.java }}.exec
+
+  # 合并所有 JDK 的 exec 文件，生成统一报告
+  merge-and-report:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # 下载所有 JDK 的 exec 文件
+      - name: Download all coverage data
+        uses: actions/download-artifact@v3
+        with:
+          path: coverage-data
+
+      # 用 JaCoCo 合并所有 JDK 的 exec 文件
+      - name: Merge coverage data from all JDKs
+        run: |
+          mkdir -p merged
+          EXEC_FILES=$(find coverage-data -name "*.exec" | sort | tr '\n' ',')
+          # 使用 jacoco:merge 合并 exec 文件
+          mvn jacoco:merge \
+            -pl wastnet-test \
+            -Djacoco.destFile=$(pwd)/merged/jacoco.exec \
+            -Djacoco.dataFile="$EXEC_FILES" \
+            --batch-mode 2>/dev/null
+
+      - name: Generate combined report
+        run: |
+          cp merged/jacoco.exec wastnet-test/target/
+          mvn jacoco:report-aggregate -pl wastnet-test -am --batch-mode
+
+      - name: Upload combined coverage report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: combined-coverage-report
+          path: wastnet-test/target/site/jacoco-aggregate/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: merged/jacoco.exec
+          flags: combined
+          name: wastnet-codecov
+          fail_ci_if_error: false
