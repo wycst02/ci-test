@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [11, 17, 21]
+        java: [8, 11, 17, 21]
       fail-fast: false
 
     steps:
@@ -78,20 +78,16 @@ jobs:
           path: coverage-data
           merge-multiple: true
 
-      # 用 JaCoCo 合并所有 JDK 的 exec 文件
-      - name: Merge coverage data from all JDKs
+      # 先编译（不跑测试），再复制合并后的 exec，最后生成报告
+      - name: Compile and generate merged report
         run: |
-          mkdir -p merged
+          mvn test-compile -pl wastnet-test -am --batch-mode
+          mkdir -p wastnet-test/target
           mvn jacoco:merge@merge -pl wastnet-test \
             -Dmerge.srcDir=$(pwd)/coverage-data \
-            -Dmerge.destFile=$(pwd)/merged/jacoco.exec \
+            -Dmerge.destFile=$(pwd)/wastnet-test/target/jacoco.exec \
             --batch-mode
-
-      - name: Generate combined report
-        run: |
-          mkdir -p wastnet-test/target
-          cp merged/jacoco.exec wastnet-test/target/jacoco.exec
-          mvn jacoco:report-aggregate -pl wastnet-test -am --batch-mode
+          mvn jacoco:report-aggregate -pl wastnet-test -DskipTests --batch-mode
 
       - name: Upload combined coverage report
         if: always()
@@ -103,7 +99,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          files: merged/jacoco.exec
+          files: wastnet-test/target/jacoco.exec
           flags: combined
           name: wastnet-codecov
           fail_ci_if_error: false
