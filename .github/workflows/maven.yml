@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [11, 17, 21]
+        java: [8, 11, 17, 21]
       fail-fast: false
 
     steps:
@@ -43,63 +43,29 @@ jobs:
       - name: Build and test on JDK ${{ matrix.java }}
         run: mvn verify -pl wastnet-test -am --batch-mode
 
-      # 每个 JDK 的 exec 文件重命名后保存（避免覆盖）
-      - name: Rename coverage file
-        if: always()
-        run: |
-          mkdir -p coverage-data
-          cp wastnet-test/target/jacoco.exec coverage-data/jacoco-${{ matrix.java }}.exec
-
-      - name: Upload coverage data for JDK ${{ matrix.java }}
-        if: always()
+      # 每个 JDK 上传自己的 XML 报告（Codecov 自动聚合）
+      - name: Upload JaCoCo XML report for JDK ${{ matrix.java }}
         uses: actions/upload-artifact@v4
         with:
-          name: jacoco-${{ matrix.java }}
-          path: coverage-data/jacoco-${{ matrix.java }}.exec
+          name: jacoco-report-jdk-${{ matrix.java }}
+          path: wastnet-test/target/site/jacoco-aggregate/jacoco.xml
 
-  # 合并所有 JDK 的 exec 文件，生成统一报告
-  merge-and-report:
+  # 下载所有 XML 报告并上传到 Codecov
+  coverage:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-
-      # 下载所有 JDK 的 exec 文件
-      - name: Download all coverage data
+      - name: Download all JaCoCo reports
         uses: actions/download-artifact@v4
         with:
-          path: coverage-data
-          merge-multiple: true
+          path: coverage-reports
 
-      # 先编译（不跑测试），再复制合并后的 exec，最后生成报告
-      - name: Compile and generate merged report
-        run: |
-          mvn test-compile -pl wastnet-test -am --batch-mode
-          mkdir -p wastnet-test/target
-          mvn jacoco:merge@merge -pl wastnet-test \
-            -Dmerge.srcDir=$(pwd)/coverage-data \
-            -Dmerge.destFile=$(pwd)/wastnet-test/target/jacoco.exec \
-            --batch-mode
-          mvn jacoco:report-aggregate -pl wastnet-test -DskipTests --batch-mode
-
-      - name: Upload combined coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: combined-coverage-report
-          path: wastnet-test/target/site/jacoco-aggregate/
-
-      - name: Upload coverage to Codecov
+      - name: Upload to Codecov
         uses: codecov/codecov-action@v3
         with:
-          files: wastnet-test/target/jacoco.exec
-          flags: combined
+          files: coverage-reports/**/jacoco.xml
+          flags: unittests
           name: wastnet-codecov
           fail_ci_if_error: false
