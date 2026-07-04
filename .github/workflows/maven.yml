@@ -15,10 +15,10 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.java }}
           distribution: 'temurin'
@@ -36,7 +36,7 @@ jobs:
 
       - name: Upload coverage data for JDK ${{ matrix.java }}
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: jacoco-${{ matrix.java }}
           path: coverage-data/jacoco-${{ matrix.java }}.exec
@@ -46,10 +46,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -57,9 +57,10 @@ jobs:
 
       # 下载所有 JDK 的 exec 文件
       - name: Download all coverage data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: coverage-data
+          merge-multiple: true
 
       # 用 JaCoCo 合并所有 JDK 的 exec 文件
       - name: Merge coverage data from all JDKs
@@ -80,7 +81,7 @@ jobs:
 
       - name: Upload combined coverage report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: combined-coverage-report
           path: wastnet-test/target/site/jacoco-aggregate/
