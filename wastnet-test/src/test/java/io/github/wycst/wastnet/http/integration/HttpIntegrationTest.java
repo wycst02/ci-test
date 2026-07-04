@@ -6,12 +6,12 @@ import io.github.wycst.wastnet.http.HttpResponse;
 import io.github.wycst.wastnet.http.HttpStatus;
 import io.github.wycst.wastnet.http.handler.HttpRoute;
 import io.github.wycst.wastnet.http.handler.HttpRouterHandler;
+import okhttp3.*;
 import org.junit.jupiter.api.*;
 
 import java.io.*;
-import java.net.HttpURLConnection;
 import java.net.ServerSocket;
-import java.net.URL;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,6 +27,8 @@ public class HttpIntegrationTest {
     private static File testFile;
     private static File htmlFile;
     private static File smallFile;
+    private static OkHttpClient httpClient;
+    private static final MediaType FORM = MediaType.parse("application/x-www-form-urlencoded");
     private static final String BOUNDARY = "----TestBoundary12345";
 
     @BeforeAll
@@ -47,6 +49,12 @@ public class HttpIntegrationTest {
         try (FileOutputStream fos = new FileOutputStream(smallFile)) {
             fos.write("small content".getBytes());
         }
+
+        // 共享 OkHttpClient（自动复用连接）
+        httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build();
 
         HttpRouterHandler router = new HttpRouterHandler("/app");
 
@@ -308,182 +316,175 @@ public class HttpIntegrationTest {
         });
 
         server = new HTTPServer(port);
-        server.requestHandler(router).bufferSize(1024);
-        server.start();
+        server.requestHandler(router).bufferSize(1024).startupBannerEnabled(false).start();
     }
 
-    // ==================== Existing tests ====================
+    // ==================== Tests ====================
 
     @Test
     public void testServerConfig() throws Exception {
         HTTPServer s2 = new HTTPServer(findFreePort());
         s2.workerNum(4).bufferSize(8192).localOnly(true).printSSLErrorLog(true).printReadErrorLog(true).startupBannerEnabled(false);
         assertNotNull(s2);
-        s2.stop();
+        s2.shutdown();
     }
 
     @Test
     public void testGetStatus() throws Exception {
-        HttpURLConnection conn = open("/app/status");
-        assertEquals(200, conn.getResponseCode());
-        assertEquals("OK", new String(readAll(conn)).trim());
-        conn.disconnect();
+        try (Response resp = get("/app/status")) {
+            assertEquals(200, resp.code());
+            assertEquals("OK", resp.body().string().trim());
+        }
     }
 
     @Test
     public void testParameters() throws Exception {
-        HttpURLConnection conn = open("/app/params?name=hello&tag=a&tag=b");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("name=hello"), body);
-        assertTrue(body.contains("tags=a,b"), body);
-        conn.disconnect();
+        try (Response resp = get("/app/params?name=hello&tag=a&tag=b")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("name=hello"), body);
+            assertTrue(body.contains("tags=a,b"), body);
+        }
     }
 
     @Test
     public void testRemoteInfo() throws Exception {
-        HttpURLConnection conn = open("/app/remote-info");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("remoteHost="), body);
-        assertTrue(body.contains("remotePort="), body);
-        assertTrue(body.contains("serverPort=" + port), body);
-        assertTrue(body.contains("requestId="), body);
-        conn.disconnect();
+        try (Response resp = get("/app/remote-info")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("remoteHost="), body);
+            assertTrue(body.contains("remotePort="), body);
+            assertTrue(body.contains("serverPort=" + port), body);
+            assertTrue(body.contains("requestId="), body);
+        }
     }
 
     @Test
     public void testAttributes() throws Exception {
-        HttpURLConnection conn = open("/app/attr");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("k1=v1"), body);
-        conn.disconnect();
+        try (Response resp = get("/app/attr")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("k1=v1"), body);
+        }
     }
 
     @Test
     public void testSendFile() throws Exception {
-        HttpURLConnection conn = open("/app/send-file");
-        assertEquals(200, conn.getResponseCode());
-        byte[] body = readAll(conn);
-        assertTrue(body.length > 1000, "sendFile body too small: " + body.length);
-        conn.disconnect();
+        try (Response resp = get("/app/send-file")) {
+            assertEquals(200, resp.code());
+            byte[] body = resp.body().bytes();
+            assertTrue(body.length > 1000, "sendFile body too small: " + body.length);
+        }
     }
 
     @Test
     public void testNotFound() throws Exception {
-        HttpURLConnection conn = open("/app/not-found");
-        assertEquals(404, conn.getResponseCode());
-        conn.disconnect();
+        try (Response resp = get("/app/not-found")) {
+            assertEquals(404, resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testPostEcho() throws Exception {
-        HttpURLConnection conn = open("/app/echo");
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.getOutputStream().write("hello world".getBytes());
-        assertEquals(200, conn.getResponseCode());
-        assertEquals("hello world", new String(readAll(conn)).trim());
-        conn.disconnect();
+        try (Response resp = post("/app/echo", "text/plain", "hello world")) {
+            assertEquals(200, resp.code());
+            assertEquals("hello world", resp.body().string().trim());
+        }
     }
 
     @Test
     public void testFormUrlEncoded() throws Exception {
-        HttpURLConnection conn = open("/app/form");
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        conn.getOutputStream().write("field1=testValue".getBytes());
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("field1=testValue"), body);
-        conn.disconnect();
+        try (Response resp = post("/app/form", "application/x-www-form-urlencoded", "field1=testValue")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("field1=testValue"), body);
+        }
     }
 
     @Test
     public void testHttpVersion() throws Exception {
-        HttpURLConnection conn = open("/app/version");
-        assertEquals(200, conn.getResponseCode());
-        assertEquals("HTTP/1.1", new String(readAll(conn)).trim());
-        conn.disconnect();
+        try (Response resp = get("/app/version")) {
+            assertEquals(200, resp.code());
+            assertEquals("HTTP/1.1", resp.body().string().trim());
+        }
     }
 
     // ==================== New coverage tests ====================
 
     @Test
     public void testMultiValueHeaders() throws Exception {
-        HttpURLConnection conn = open("/app/multi-header");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertEquals("ok", body);
-        conn.disconnect();
+        try (Response resp = get("/app/multi-header")) {
+            assertEquals(200, resp.code());
+            assertEquals("ok", resp.body().string());
+        }
     }
 
     @Test
     public void testEarlyHints() throws Exception {
-        HttpURLConnection conn = open("/app/early-hints");
-        int code = conn.getResponseCode();
-        assertTrue(code == 200 || code == 103, "expected 200 or 103, got " + code);
-        conn.disconnect();
+        try (Response resp = get("/app/early-hints")) {
+            assertTrue(resp.code() == 200 || resp.code() == 103,
+                    "expected 200 or 103, got " + resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testChunkedWrite() throws Exception {
-        HttpURLConnection conn = open("/app/chunked");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("chunked"), body);
-        conn.disconnect();
+        try (Response resp = get("/app/chunked")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("chunked"), body);
+        }
     }
 
     @Test
     public void testRemoveHeader() throws Exception {
-        HttpURLConnection conn = open("/app/remove-header");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertEquals("ok", body);
-        conn.disconnect();
+        try (Response resp = get("/app/remove-header")) {
+            assertEquals(200, resp.code());
+            assertEquals("ok", resp.body().string());
+        }
     }
 
     @Test
     public void testLargeWrite() throws Exception {
-        HttpURLConnection conn = open("/app/large-write");
-        assertEquals(200, conn.getResponseCode());
-        byte[] body = readAll(conn);
-        assertEquals(65536, body.length, "large write should return 65536 bytes");
-        conn.disconnect();
+        try (Response resp = get("/app/large-write")) {
+            assertEquals(200, resp.code());
+            byte[] body = resp.body().bytes();
+            assertEquals(65536, body.length, "large write should return 65536 bytes");
+        }
     }
 
     @Test
     public void testSse() throws Exception {
-        HttpURLConnection conn = open("/app/sse");
-        try { int code = conn.getResponseCode(); } catch (Exception ignored) {}
-        conn.disconnect();
+        try (Response resp = get("/app/sse")) {
+            resp.code();
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testSseEvent() throws Exception {
-        HttpURLConnection conn = open("/app/sse-event");
-        try { int code = conn.getResponseCode(); } catch (Exception ignored) {}
-        conn.disconnect();
+        try (Response resp = get("/app/sse-event")) {
+            resp.code();
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testLastModified() throws Exception {
-        HttpURLConnection conn = open("/app/last-modified");
-        int code = conn.getResponseCode();
-        String body = code != 200 ? new String(readAll(conn)) : "";
-        assertTrue(code == 200, "expected 200, got " + code + " body=" + body);
-        conn.disconnect();
+        try (Response resp = get("/app/last-modified")) {
+            assertEquals(200, resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testKeepAlive() throws Exception {
-        HttpURLConnection conn = open("/app/keep-alive");
-        conn.setRequestProperty("Connection", "close");
-        assertEquals(200, conn.getResponseCode());
-        conn.disconnect();
+        try (Response resp = get("/app/keep-alive", "Connection", "close")) {
+            assertEquals(200, resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
@@ -492,15 +493,11 @@ public class HttpIntegrationTest {
         for (int i = 0; i < 5000; i++) sb.append("data");
         String bodyData = sb.toString();
 
-        HttpURLConnection conn = open("/app/large-form");
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        conn.getOutputStream().write(bodyData.getBytes());
-        assertEquals(200, conn.getResponseCode());
-        String resp = new String(readAll(conn));
-        assertTrue(resp.contains("len="), resp);
-        conn.disconnect();
+        try (Response resp = post("/app/large-form", "application/x-www-form-urlencoded", bodyData)) {
+            assertEquals(200, resp.code());
+            String r = resp.body().string();
+            assertTrue(r.contains("len="), r);
+        }
     }
 
     @Test
@@ -513,97 +510,92 @@ public class HttpIntegrationTest {
                 + "value2\r\n"
                 + "--" + BOUNDARY + "--\r\n";
 
-        HttpURLConnection conn = open("/app/upload");
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
-        conn.getOutputStream().write(body.getBytes());
-        assertEquals(200, conn.getResponseCode());
-        String resp = new String(readAll(conn));
-        assertTrue(resp.contains("field1=value1"), resp);
-        assertTrue(resp.contains("field2=value2"), resp);
-        conn.disconnect();
+        try (Response resp = postBytes("/app/upload", "multipart/form-data; boundary=" + BOUNDARY, body.getBytes())) {
+            assertEquals(200, resp.code());
+            String r = resp.body().string();
+            assertTrue(r.contains("field1=value1"), r);
+            assertTrue(r.contains("field2=value2"), r);
+        }
     }
 
     @Test
     public void testSendFileGzip() throws Exception {
-        HttpURLConnection conn = open("/app/send-file-gzip");
-        conn.setRequestProperty("Accept-Encoding", "gzip");
-        assertEquals(200, conn.getResponseCode());
-        conn.disconnect();
+        try (Response resp = get("/app/send-file-gzip", "Accept-Encoding", "gzip")) {
+            assertEquals(200, resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testSendFileSmall() throws Exception {
-        HttpURLConnection conn = open("/app/send-file-small");
-        assertEquals(200, conn.getResponseCode());
-        byte[] body = readAll(conn);
-        assertTrue(body.length > 0, "small file body should not be empty");
-        conn.disconnect();
+        try (Response resp = get("/app/send-file-small")) {
+            assertEquals(200, resp.code());
+            assertTrue(resp.body().bytes().length > 0, "small file body should not be empty");
+        }
     }
 
     @Test
     public void testMultiHeaderListPath() throws Exception {
-        HttpURLConnection conn = open("/app/multi3");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertEquals("ok", body.trim());
-        conn.disconnect();
+        try (Response resp = get("/app/multi3")) {
+            assertEquals(200, resp.code());
+            assertEquals("ok", resp.body().string().trim());
+        }
     }
 
     @Test
     public void testSendFileWithLastModified() throws Exception {
-        HttpURLConnection conn = open("/app/last-mod-file");
-        assertEquals(200, conn.getResponseCode());
-        conn.disconnect();
+        try (Response resp = get("/app/last-mod-file")) {
+            assertEquals(200, resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testGetHeader() throws Exception {
-        HttpURLConnection conn = open("/app/get-header");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("got=echoVal"), body);
-        conn.disconnect();
+        try (Response resp = get("/app/get-header")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("got=echoVal"), body);
+        }
     }
 
     @Test
     public void testRemoveHeaderValue() throws Exception {
-        HttpURLConnection conn = open("/app/remove-val");
-        assertEquals(200, conn.getResponseCode());
-        String body = new String(readAll(conn));
-        assertTrue(body.contains("val=keep"), body);
-        conn.disconnect();
+        try (Response resp = get("/app/remove-val")) {
+            assertEquals(200, resp.code());
+            String body = resp.body().string();
+            assertTrue(body.contains("val=keep"), body);
+        }
     }
 
     @Test
     public void testLargeWriteFlush() throws Exception {
-        HttpURLConnection conn = open("/app/large-write-flush");
-        assertEquals(200, conn.getResponseCode());
-        conn.disconnect();
+        try (Response resp = get("/app/large-write-flush")) {
+            assertEquals(200, resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testSendNonExistentFile() throws Exception {
-        HttpURLConnection conn = open("/app/send-nonexist");
-        int code = conn.getResponseCode();
-        // Server returns 404 because file doesn't exist
-        assertTrue(code >= 400, "expected error status for non-existent file, got " + code);
-        conn.disconnect();
+        try (Response resp = get("/app/send-nonexist")) {
+            assertTrue(resp.code() >= 400, "expected error status for non-existent file, got " + resp.code());
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testContentLength() throws Exception {
-        HttpURLConnection conn = open("/app/content-length");
-        assertEquals(200, conn.getResponseCode());
-        String cl = conn.getHeaderField("Content-Length");
-        assertNotNull(cl, "Content-Length should be set");
-        conn.disconnect();
+        try (Response resp = get("/app/content-length")) {
+            assertEquals(200, resp.code());
+            String cl = resp.header("Content-Length");
+            assertNotNull(cl, "Content-Length should be set");
+            resp.body().bytes();
+        }
     }
 
     @Test
     public void testLargeMultipartUpload() throws Exception {
-        // Large file field to trigger readFieldToFile in HttpBodyStreamDecoder
         StringBuilder largeContent = new StringBuilder();
         for (int i = 0; i < 100000; i++) largeContent.append("LARGE_DATA_CHUNK_");
         String body = "--" + BOUNDARY + "\r\n"
@@ -615,37 +607,46 @@ public class HttpIntegrationTest {
                 + "hello\r\n"
                 + "--" + BOUNDARY + "--\r\n";
 
-        HttpURLConnection conn = open("/app/upload");
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + BOUNDARY);
-        conn.getOutputStream().write(body.getBytes());
-        assertEquals(200, conn.getResponseCode());
-        String resp = new String(readAll(conn));
-        assertTrue(resp.contains("name=hello"), resp);
-        conn.disconnect();
+        try (Response resp = postBytes("/app/upload", "multipart/form-data; boundary=" + BOUNDARY, body.getBytes())) {
+            assertEquals(200, resp.code());
+            String r = resp.body().string();
+            assertTrue(r.contains("name=hello"), r);
+        }
     }
 
     @AfterAll
     public static void stopServer() {
-        if (server != null) server.stop();
+        if (server != null) server.shutdown();
         if (testFile != null) testFile.delete();
         if (htmlFile != null) htmlFile.delete();
         if (smallFile != null) smallFile.delete();
     }
 
-    private static HttpURLConnection open(String path) throws Exception {
-        return (HttpURLConnection) new URL("http://localhost:" + port + path).openConnection();
+    // ==================== OkHttp helpers ====================
+
+    /** GET 请求，支持可选的请求头键值对 */
+    private static Response get(String path, String... headers) throws IOException {
+        Request.Builder rb = new Request.Builder().url("http://localhost:" + port + path);
+        for (int i = 0; i + 1 < headers.length; i += 2) {
+            rb.addHeader(headers[i], headers[i + 1]);
+        }
+        return httpClient.newCall(rb.build()).execute();
     }
 
-    private static byte[] readAll(HttpURLConnection conn) throws Exception {
-        InputStream in = conn.getResponseCode() >= 400 ? conn.getErrorStream() : conn.getInputStream();
-        if (in == null) return new byte[0];
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        byte[] buf = new byte[4096];
-        int n;
-        while ((n = in.read(buf)) != -1) baos.write(buf, 0, n);
-        return baos.toByteArray();
+    /** POST 请求（文本 body） */
+    private static Response post(String path, String contentType, String body) throws IOException {
+        Request.Builder rb = new Request.Builder()
+                .url("http://localhost:" + port + path)
+                .post(RequestBody.create(MediaType.parse(contentType), body));
+        return httpClient.newCall(rb.build()).execute();
+    }
+
+    /** POST 请求（二进制 body，如 multipart） */
+    private static Response postBytes(String path, String contentType, byte[] body) throws IOException {
+        Request.Builder rb = new Request.Builder()
+                .url("http://localhost:" + port + path)
+                .post(RequestBody.create(MediaType.parse(contentType), body));
+        return httpClient.newCall(rb.build()).execute();
     }
 
     private static int findFreePort() {

@@ -241,6 +241,7 @@ public class ChannelSSLContextTest {
                     response.setContentType("text/plain");
                     response.body("Hello SSL".getBytes());
                 })
+                .startupBannerEnabled(false)
                 .start();
         try {
             Thread.sleep(200); // wait for server to start
@@ -303,6 +304,7 @@ public class ChannelSSLContextTest {
                     response.setContentType("text/plain");
                     response.body("OK".getBytes());
                 })
+                .startupBannerEnabled(false)
                 .start();
         try {
             Thread.sleep(200);

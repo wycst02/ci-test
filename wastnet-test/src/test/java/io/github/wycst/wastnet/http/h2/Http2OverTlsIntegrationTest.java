@@ -122,7 +122,7 @@ public class Http2OverTlsIntegrationTest {
     @AfterAll
     public static void stopServer() {
         if (server != null) {
-            server.stop();
+            server.shutdown();
         }
     }
 

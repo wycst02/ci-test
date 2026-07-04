@@ -3,6 +3,7 @@ package io.github.wycst.wastnet.socket.tcp;
 import io.github.wycst.wastnet.socket.channel.ChannelWriter;
 import io.github.wycst.wastnet.socket.handler.IdleStateHandler;
 import io.github.wycst.wastnet.socket.handler.IdleStateHandlerTrigger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,20 +23,25 @@ import static org.mockito.Mockito.*;
  */
 public class ChannelContextCoverageTest {
 
-    private SocketChannel mockChannel;
+    private java.nio.channels.SocketChannel realChannel;
     private ChannelContext ctx;
+    private java.net.ServerSocket serverSocket;
 
     @BeforeEach
-    public void setUp() throws IOException {
-        mockChannel = mock(SocketChannel.class);
-        // Stub write() to return the number of bytes (avoid infinite loop when 0 returned)
-        when(mockChannel.write(any(ByteBuffer.class))).thenAnswer(invocation -> {
-            ByteBuffer buf = invocation.getArgument(0);
-            int remaining = buf.remaining();
-            buf.position(buf.limit()); // simulate full write
-            return remaining;
-        });
-        ctx = new ChannelContext(1L, mockChannel, 1024);
+    public void setUp() throws Exception {
+        // 使用真实连接的 SocketChannel（isOpen()/isConnected() 自然返回 true）
+        // Mock 无法 stub isOpen()（final 方法），不同 JDK 行为不一致
+        serverSocket = new java.net.ServerSocket(0);
+        realChannel = java.nio.channels.SocketChannel.open(
+                new java.net.InetSocketAddress("127.0.0.1", serverSocket.getLocalPort()));
+        realChannel.configureBlocking(false);
+        ctx = new ChannelContext(1L, realChannel, 1024);
+    }
+
+    @AfterEach
+    public void tearDown() throws IOException {
+        if (realChannel != null) realChannel.close();
+        if (serverSocket != null) serverSocket.close();
     }
 
     // ==================== isWorkerThread (worker==null → true) ====================
@@ -80,7 +86,7 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testWriteByteBufferNoBuffer() throws IOException {
-        ChannelContext noBufCtx = new ChannelContext(2L, mockChannel, 0);
+        ChannelContext noBufCtx = new ChannelContext(2L, realChannel, 0);
         ByteBuffer data = ByteBuffer.wrap("test".getBytes());
         int n = noBufCtx.write(data);
         Assertions.assertTrue(n > 0);
@@ -205,7 +211,7 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testGetLocalAddressFirstCall() throws IOException {
-        when(mockChannel.getLocalAddress()).thenReturn(new java.net.InetSocketAddress(8080));
+        // 真实通道有真实地址，不需要 stub
         SocketAddress addr = ctx.getLocalAddress();
         Assertions.assertNotNull(addr);
     }
@@ -214,8 +220,15 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testInitializeAddressCacheException() throws IOException {
-        when(mockChannel.getRemoteAddress()).thenThrow(new IOException("simulated"));
-        SocketAddress addr = ctx.getRemoteAddress();
+        SocketChannel mockCh = mock(SocketChannel.class);
+        try {
+            java.lang.reflect.Field f = java.nio.channels.spi.AbstractInterruptibleChannel.class.getDeclaredField("open");
+            f.setAccessible(true);
+            f.setBoolean(mockCh, true);
+        } catch (Exception ignored) {}
+        when(mockCh.getRemoteAddress()).thenThrow(new IOException("simulated"));
+        ChannelContext excCtx = new ChannelContext(2L, mockCh, 0);
+        SocketAddress addr = excCtx.getRemoteAddress();
         Assertions.assertNull(addr);
     }
 
@@ -230,8 +243,14 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testChannelWriteThrowsIOException() throws IOException {
-        when(mockChannel.write(any(ByteBuffer.class))).thenThrow(new IOException("simulated"));
-        ChannelContext excCtx = new ChannelContext(2L, mockChannel, 0);
+        SocketChannel mockCh = mock(SocketChannel.class);
+        try {
+            java.lang.reflect.Field f = java.nio.channels.spi.AbstractInterruptibleChannel.class.getDeclaredField("open");
+            f.setAccessible(true);
+            f.setBoolean(mockCh, true);
+        } catch (Exception ignored) {}
+        when(mockCh.write(any(ByteBuffer.class))).thenThrow(new IOException("simulated"));
+        ChannelContext excCtx = new ChannelContext(2L, mockCh, 0);
         ByteBuffer data = ByteBuffer.wrap("test".getBytes());
         int n = excCtx.write(data);
         Assertions.assertEquals(-1, n);
@@ -292,7 +311,7 @@ public class ChannelContextCoverageTest {
         // readKey is null → readKey.cancel() should not NPE
         ChannelContext noKeyCtx;
         try {
-            noKeyCtx = new ChannelContext(99L, mockChannel, 0);
+            noKeyCtx = new ChannelContext(99L, realChannel, 0);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -355,13 +374,20 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testChannelReadTriggersIdle() throws IOException {
-        when(mockChannel.read(any(ByteBuffer.class)))
+        SocketChannel mockCh = mock(SocketChannel.class);
+        try {
+            java.lang.reflect.Field f = java.nio.channels.spi.AbstractInterruptibleChannel.class.getDeclaredField("open");
+            f.setAccessible(true);
+            f.setBoolean(mockCh, true);
+        } catch (Exception ignored) {}
+        when(mockCh.read(any(ByteBuffer.class)))
                 .thenReturn(5)
                 .thenReturn(-1);
         IdleStateHandler handler = mock(IdleStateHandler.class);
-        ctx.setIdleTrigger(handler);
+        ChannelContext readCtx = new ChannelContext(5L, mockCh, 1024);
+        readCtx.setIdleTrigger(handler);
         ByteBuffer buf = ByteBuffer.allocate(100);
-        int n = ctx.read(buf);
+        int n = readCtx.read(buf);
         Assertions.assertEquals(5, n);
     }
 
@@ -397,11 +423,17 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testGetRemoteAddressCached() throws IOException {
-        when(mockChannel.getRemoteAddress()).thenReturn(new java.net.InetSocketAddress("10.0.0.1", 1234));
-        java.net.InetSocketAddress first = ctx.getRemoteAddress();
+        SocketChannel mockCh = mock(SocketChannel.class);
+        try {
+            java.lang.reflect.Field f = java.nio.channels.spi.AbstractInterruptibleChannel.class.getDeclaredField("open");
+            f.setAccessible(true);
+            f.setBoolean(mockCh, true);
+        } catch (Exception ignored) {}
+        when(mockCh.getRemoteAddress()).thenReturn(new java.net.InetSocketAddress("10.0.0.1", 1234));
+        ChannelContext addrCtx = new ChannelContext(6L, mockCh, 0);
+        java.net.InetSocketAddress first = addrCtx.getRemoteAddress();
         Assertions.assertNotNull(first);
-        // Second call should use cached value
-        java.net.InetSocketAddress second = ctx.getRemoteAddress();
+        java.net.InetSocketAddress second = addrCtx.getRemoteAddress();
         Assertions.assertSame(first, second);
     }
 
@@ -422,7 +454,7 @@ public class ChannelContextCoverageTest {
     public void testChannelWriteEmptyBufferReturnsZero() throws IOException {
         ByteBuffer empty = ByteBuffer.allocate(0);
         // channelWrite → len == 0 → return 0
-        ChannelContext noBufCtx = new ChannelContext(3L, mockChannel, 0);
+        ChannelContext noBufCtx = new ChannelContext(3L, realChannel, 0);
         int n = noBufCtx.write(empty);
         Assertions.assertEquals(0, n);
     }
@@ -471,9 +503,9 @@ public class ChannelContextCoverageTest {
 
     @Test
     public void testReadFullyChannelClosedReturnsMinusOne() throws IOException {
-        // Close the mock channel's underlying socket
-        ChannelContext readCtx = new ChannelContext(4L, mockChannel, 0);
-        when(mockChannel.read(any(ByteBuffer.class))).thenReturn(-1);
+        SocketChannel mockCh = mock(SocketChannel.class);
+        when(mockCh.read(any(ByteBuffer.class))).thenReturn(-1);
+        ChannelContext readCtx = new ChannelContext(4L, mockCh, 0);
         byte[] buf = new byte[10];
         int n = readCtx.readFully(buf, 0, buf.length, 1000);
         Assertions.assertEquals(-1, n);

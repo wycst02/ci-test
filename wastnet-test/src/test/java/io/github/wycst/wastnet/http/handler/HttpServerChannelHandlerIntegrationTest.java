@@ -47,8 +47,8 @@ public class HttpServerChannelHandlerIntegrationTest {
 
     @AfterAll
     public static void stopServers() throws Exception {
-        if (serverWithExceptionHandler != null) serverWithExceptionHandler.stop();
-        if (serverWithoutExceptionHandler != null) serverWithoutExceptionHandler.stop();
+        if (serverWithExceptionHandler != null) serverWithExceptionHandler.shutdown();
+        if (serverWithoutExceptionHandler != null) serverWithoutExceptionHandler.shutdown();
     }
 
     // ==================== handleApplicationException + handleExceptionHandlerFailure + handleInternalException ====================
@@ -60,6 +60,7 @@ public class HttpServerChannelHandlerIntegrationTest {
         Socket socket = new Socket();
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", port1), 5000);
+            socket.setSoTimeout(30000);
             OutputStream out = socket.getOutputStream();
             out.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n".getBytes("US-ASCII"));
             out.flush();
@@ -83,6 +84,7 @@ public class HttpServerChannelHandlerIntegrationTest {
         Socket socket = new Socket();
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", port2), 5000);
+            socket.setSoTimeout(30000);
             OutputStream out = socket.getOutputStream();
             out.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n".getBytes("US-ASCII"));
             out.flush();
@@ -107,6 +109,7 @@ public class HttpServerChannelHandlerIntegrationTest {
         Socket socket = new Socket();
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", port1), 5000);
+            socket.setSoTimeout(30000);
             OutputStream out = socket.getOutputStream();
             out.write("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\n\r\n".getBytes("US-ASCII"));
             out.flush();
@@ -125,11 +128,10 @@ public class HttpServerChannelHandlerIntegrationTest {
     @Test
     public void testBadRequestUriTooLong() throws Exception {
         // URI exceeding max length → BadHttpRequest → handleBadRequest
-        // Note: on server1 the request handler always throws, but bad requests skip it
-        // and go directly to handleBadRequest which sends the error response.
         Socket socket = new Socket();
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", port1), 5000);
+            socket.setSoTimeout(30000);
             OutputStream out = socket.getOutputStream();
             StringBuilder sb = new StringBuilder("GET /");
             for (int i = 0; i < 10240; i++) sb.append('a');
@@ -152,6 +154,7 @@ public class HttpServerChannelHandlerIntegrationTest {
         Socket socket = new Socket();
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", port1), 5000);
+            socket.setSoTimeout(30000);
             OutputStream out = socket.getOutputStream();
             out.write("GET / HTTP/1.1\r\nHost: localhost\r\n\r\r\n".getBytes("US-ASCII"));
             out.flush();
@@ -174,6 +177,7 @@ public class HttpServerChannelHandlerIntegrationTest {
         Socket socket = new Socket();
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", port2), 5000);
+            socket.setSoTimeout(30000);
             OutputStream out = socket.getOutputStream();
             out.write("GET /some-path HTTP/1.1\r\nHost: localhost\r\n\r\n".getBytes("US-ASCII"));
             out.flush();

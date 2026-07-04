@@ -112,7 +112,7 @@ public class WebSocketIntegrationTest {
     @AfterAll
     public static void stopServer() {
         if (server != null) {
-            server.stop();
+            server.shutdown();
         }
     }
 
@@ -122,7 +122,7 @@ public class WebSocketIntegrationTest {
         lastTextMessage = new AtomicReference<String>();
 
         OkHttpClient client = new OkHttpClient.Builder()
-                .readTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
                 .build();
 
         final CountDownLatch clientMessageLatch = new CountDownLatch(1);

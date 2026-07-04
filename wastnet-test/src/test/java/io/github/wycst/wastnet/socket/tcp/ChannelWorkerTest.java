@@ -36,7 +36,7 @@ public class ChannelWorkerTest {
 
     @AfterAll
     public static void cleanup() {
-        if (server != null) server.stop();
+        if (server != null) server.shutdown();
     }
 
     @Test

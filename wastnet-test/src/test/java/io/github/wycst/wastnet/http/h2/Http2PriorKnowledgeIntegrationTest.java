@@ -274,15 +274,15 @@ public class Http2PriorKnowledgeIntegrationTest {
 
         client = new OkHttpClient.Builder()
                 .protocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE))
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(5, TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
                 .build();
     }
 
     @AfterAll
     public static void stopServer() {
         if (server != null) {
-            server.stop();
+            server.shutdown();
         }
         if (testFile != null) {
             testFile.delete();

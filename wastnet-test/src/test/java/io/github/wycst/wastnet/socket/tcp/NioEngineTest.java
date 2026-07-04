@@ -285,7 +285,7 @@ public class NioEngineTest {
     @Test
     public void testStopWhenNotStarted() {
         TestEngine engine = new TestEngine(8080);
-        engine.stop(); // should not throw, logs "engine is not start"
+        engine.shutdown(); // should not throw, logs "engine is not start"
         engine.shutdown();
     }
 
@@ -294,15 +294,15 @@ public class NioEngineTest {
         TestEngine engine = new TestEngine(8080);
         // Simulate started state by setting engineRunFlag
         setEngineRunFlag(engine, true);
-        engine.stop(); // should stop
+        engine.shutdown(); // should stop
         engine.shutdown();
     }
 
     @Test
     public void testStopTwice() {
         TestEngine engine = new TestEngine(8080);
-        engine.stop(); // first stop ("not start")
-        engine.stop(); // second stop ("not start")
+        engine.shutdown(); // first stop ("not start")
+        engine.shutdown(); // second stop ("not start")
         engine.shutdown();
     }
 

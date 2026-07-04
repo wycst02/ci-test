@@ -66,7 +66,7 @@ public class WebSocketFragmentationTest {
 
     @AfterAll
     public static void stopServer() {
-        if (server != null) server.stop();
+        if (server != null) server.shutdown();
     }
 
     @Test

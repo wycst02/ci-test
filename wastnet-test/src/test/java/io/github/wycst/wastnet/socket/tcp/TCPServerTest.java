@@ -97,7 +97,7 @@ public class TCPServerTest {
             Assertions.assertSame(server, result);
             Assertions.assertTrue(server.engineRunFlag);
         } finally {
-            server.stop();
+            server.shutdown();
         }
     }
 
@@ -122,7 +122,7 @@ public class TCPServerTest {
     @Test
     public void testStopWhenNotStarted() {
         TCPServer server = new TCPServer(8080);
-        server.stop(); // should not throw
+        server.shutdown(); // should not throw
         server.shutdown();
     }
 
@@ -139,7 +139,7 @@ public class TCPServerTest {
             server.restart(); // stop + start
             Assertions.assertTrue(server.engineRunFlag);
         } finally {
-            server.stop();
+            server.shutdown();
         }
     }
 
@@ -156,7 +156,7 @@ public class TCPServerTest {
             server.start();
             Assertions.assertTrue(server.engineRunFlag);
         } finally {
-            server.stop();
+            server.shutdown();
         }
     }
 
@@ -174,7 +174,8 @@ public class TCPServerTest {
             server.start();
             ChannelWorker worker = server.workers()[0];
             // Non-SSL → creates plain ChannelRunner
-            java.net.ServerSocket ss = new java.net.ServerSocket(port + 1);
+            int helperPort = findFreePort();
+            java.net.ServerSocket ss = new java.net.ServerSocket(helperPort);
             java.nio.channels.SocketChannel ch = java.nio.channels.SocketChannel.open();
             ch.connect(new java.net.InetSocketAddress("127.0.0.1", ss.getLocalPort()));
             ChannelRunner runner = server.createConnectionRunner(worker, ch);
@@ -183,7 +184,7 @@ public class TCPServerTest {
             ch.close();
             ss.close();
         } finally {
-            server.stop();
+            server.shutdown();
         }
     }
 
@@ -204,7 +205,8 @@ public class TCPServerTest {
             server.start();
             ChannelWorker worker = server.workers()[0];
             // SSL → creates ChannelSSLRunner
-            java.net.ServerSocket ss = new java.net.ServerSocket(port + 2);
+            int helperPort = findFreePort();
+            java.net.ServerSocket ss = new java.net.ServerSocket(helperPort);
             java.nio.channels.SocketChannel ch = java.nio.channels.SocketChannel.open();
             ch.connect(new java.net.InetSocketAddress("127.0.0.1", ss.getLocalPort()));
             ChannelRunner runner = server.createConnectionRunner(worker, ch);
@@ -213,7 +215,7 @@ public class TCPServerTest {
             ch.close();
             ss.close();
         } finally {
-            server.stop();
+            server.shutdown();
         }
     }
 
@@ -266,7 +268,7 @@ public class TCPServerTest {
                 ChannelWorker selected = server.nextWorker(0, workers);
                 Assertions.assertNotNull(selected);
             } finally {
-                server.stop();
+                server.shutdown();
             }
         } finally {
             UNSAFE.getClass().getMethod("putBoolean", Object.class, long.class, boolean.class).invoke(UNSAFE, base, offset, orig);
