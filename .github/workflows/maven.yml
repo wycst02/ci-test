@@ -58,7 +58,7 @@ jobs:
             EXCLUDES="$EXCLUDES,!HttpServerChannelHandlerIntegrationTest"
             EXCLUDES="$EXCLUDES'"
           fi
-          mvn verify -pl wastnet-test -am --batch-mode -DfailIfNoTests=false $EXCLUDES
+          mvn verify -pl wastnet-test -am --batch-mode -Dsurefire.failIfNoSpecifiedTests=false $EXCLUDES
 
       # 上传 XML 报告到 Codecov（所有 JDK）
       - name: Upload JaCoCo XML report for JDK ${{ matrix.java }}
