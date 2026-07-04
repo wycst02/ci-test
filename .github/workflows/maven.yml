@@ -82,7 +82,7 @@ jobs:
       - name: Merge coverage data from all JDKs
         run: |
           mkdir -p merged
-          mvn jacoco:merge -pl wastnet-test \
+          mvn jacoco:merge@merge -pl wastnet-test \
             -Dmerge.srcDir=$(pwd)/coverage-data \
             -Dmerge.destFile=$(pwd)/merged/jacoco.exec \
             --batch-mode
