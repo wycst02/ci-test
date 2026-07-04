@@ -57,6 +57,7 @@ jobs:
             EXCLUDES="$EXCLUDES,!HttpServerIntegrationTest"
             EXCLUDES="$EXCLUDES,!HttpIntegrationTest"
             EXCLUDES="$EXCLUDES,!HttpServerChannelHandlerIntegrationTest"
+            EXCLUDES="$EXCLUDES,!TcpClientTest"
 
           fi
           mvn verify -pl wastnet-test -am --batch-mode -Dsurefire.failIfNoSpecifiedTests=false $EXCLUDES
