@@ -20,5 +20,5 @@ public interface SseHandler {
      * @param emitter the SSE emitter for pushing events
      * @throws Exception if an error occurs
      */
-    void handle(SseEmitter emitter) throws Exception;
+    void handle(SseEmitter emitter) throws Throwable;
 }

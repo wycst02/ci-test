@@ -3,17 +3,20 @@ package io.github.wycst.wastnet.http.annotation;
 import io.github.wycst.wastnet.http.HttpMethod;
 import io.github.wycst.wastnet.http.HttpRequest;
 import io.github.wycst.wastnet.http.HttpResponse;
-import io.github.wycst.wastnet.http.SseEmitter;
 import io.github.wycst.wastnet.http.handler.HttpRoute;
 import io.github.wycst.wastnet.http.handler.HttpRouterHandler;
-import io.github.wycst.wastnet.http.handler.SseHandler;
 import io.github.wycst.wastnet.http.upgrade.websocket.WebSocketResource;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +44,7 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
 
     private AnnotationResolver resolver = new DefaultAnnotationResolver();
     private final BeanContainer beanContainer = new BeanContainer();
+    private final Set<Object> processedConfigBeans = new HashSet<Object>();
     private HttpMessageConverter messageConverter;
     private Class<?>[] requestBodyAnnotations = new Class<?>[]{io.github.wycst.wastnet.http.annotation.RequestBody.class};
     private Class<?>[] responseBodyAnnotations = new Class<?>[]{io.github.wycst.wastnet.http.annotation.ResponseBody.class};
@@ -136,32 +140,37 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
      * into controllers.
      */
     public AnnotationRouterHandler scanPackages(String... packageNames) {
+        List<Class<?>> allControllers = new ArrayList<Class<?>>();
+        List<Class<?>> allWebSocketClasses = new ArrayList<Class<?>>();
         for (String pkg : packageNames) {
-            scanOnePackage(pkg);
+            for (Class<?> clazz : classifyClasses(pkg)) {
+                if (resolver.isController(clazz)) {
+                    allControllers.add(clazz);
+                } else if (resolver.isComponent(clazz)) {
+                    registerComponent(clazz);
+                } else if (resolver.isWebSocketEndpoint(clazz)) {
+                    allWebSocketClasses.add(clazz);
+                } else if (clazz.isAnnotationPresent(Configuration.class)) {
+                    registerComponent(clazz);
+                }
+            }
         }
+        processBeanMethods();
+        // Retry deferred @Inject field injections (dependencies from @Bean results)
+        beanContainer.retryDeferredFields();
+        for (Class<?> c : allControllers) registerController(c);
+        for (Class<?> c : allWebSocketClasses) registerWebSocketEndpoint(c);
         return this;
     }
 
-    private void scanOnePackage(String packageName) {
+    /** Scan a package and return eligible classes. */
+    private Set<Class<?>> classifyClasses(String packageName) {
         Set<Class<?>> classes = PackageScanner.scan(packageName, resolver);
-
-        List<Class<?>> components = new ArrayList<Class<?>>();
-        List<Class<?>> controllers = new ArrayList<Class<?>>();
-        List<Class<?>> endpoints = new ArrayList<Class<?>>();
+        Set<Class<?>> result = new LinkedHashSet<Class<?>>();
         for (Class<?> clazz : classes) {
-            if (!isEligibleClass(clazz)) continue;
-            if (resolver.isController(clazz)) {
-                controllers.add(clazz);
-            } else if (resolver.isComponent(clazz)) {
-                components.add(clazz);
-            } else if (resolver.isWebSocketEndpoint(clazz)) {
-                endpoints.add(clazz);
-            }
+            if (isEligibleClass(clazz)) result.add(clazz);
         }
-        for (Class<?> c : components)  registerComponent(c);
-        processBeanMethods();
-        for (Class<?> c : controllers) registerController(c);
-        for (Class<?> c : endpoints)   registerWebSocketEndpoint(c);
+        return result;
     }
 
     /**
@@ -169,35 +178,61 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
      * register their return values back into the container.
      */
     private void processBeanMethods() {
-        for (Object bean : beanContainer.getBeans()) {
-            for (java.lang.reflect.Method method : bean.getClass().getMethods()) {
-                if (java.lang.reflect.Modifier.isStatic(method.getModifiers())) continue;
+        // Snapshot to avoid scanning beans registered by @Bean methods during iteration
+        List<Object> snapshot = new ArrayList<Object>(beanContainer.getBeans());
+        List<Method> deferred = new ArrayList<Method>();
+        for (Object bean : snapshot) {
+            if (!bean.getClass().isAnnotationPresent(Configuration.class)) continue;
+            if (!processedConfigBeans.add(bean)) continue;
+            for (Method method : bean.getClass().getMethods()) {
+                if (Modifier.isStatic(method.getModifiers())) continue;
                 Bean beanAnn = method.getAnnotation(Bean.class);
                 if (beanAnn == null) continue;
-
-                try {
-                    // Resolve method parameters from the container
-                    Class<?>[] paramTypes = method.getParameterTypes();
-                    Object[] args = new Object[paramTypes.length];
-                    for (int i = 0; i < paramTypes.length; i++) {
-                        args[i] = beanContainer.getBean(paramTypes[i]);
-                        if (args[i] == null) {
-                            throw new RuntimeException(
-                                    "Cannot resolve dependency '" + paramTypes[i].getSimpleName()
-                                            + "' for @Bean method " + method.getName()
-                                            + " on " + bean.getClass().getName());
-                        }
-                    }
-
-                    Object result = method.invoke(bean, args);
-                    String name = beanAnn.value().isEmpty() ? method.getName() : beanAnn.value();
-                    beanContainer.register(name, result);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to process @Bean method " + method.getName()
-                            + " on " + bean.getClass().getName(), e);
+                if (!tryProcessBeanMethod(bean, method, beanAnn)) {
+                    deferred.add(method);
                 }
             }
         }
+        // Retry deferred @Bean methods (up to 4 retries for deep dependency chains)
+        if (!deferred.isEmpty()) {
+            List<Method> pending = deferred;
+            int retry = 4;
+            while (--retry > -1 && !pending.isEmpty()) {
+                List<Method> next = new ArrayList<Method>();
+                for (Method method : pending) {
+                    Object bean = beanContainer.getBean(method.getDeclaringClass());
+                    if (bean != null && tryProcessBeanMethod(bean, method, method.getAnnotation(Bean.class))) {
+                        continue;
+                    }
+                    next.add(method);
+                }
+                pending = next;
+            }
+            if (!pending.isEmpty()) {
+                throw new RuntimeException("Cannot resolve dependencies for @Bean after "
+                        + "4 retries: " + pending);
+            }
+        }
+    }
+
+    /** @return true if resolved and invoked, false if deferred due to missing deps */
+    private boolean tryProcessBeanMethod(Object bean, Method method, Bean beanAnn) {
+        try {
+            Object[] args = resolveParameters(method.getParameters(),
+                    "@Bean method " + method.getName() + " on " + bean.getClass().getName());
+            if (args == null) return false;
+            invokeBeanMethod(bean, method, beanAnn, args);
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process @Bean method " + method.getName()
+                    + " on " + bean.getClass().getName(), e);
+        }
+    }
+
+    private void invokeBeanMethod(Object bean, Method method, Bean beanAnn, Object[] args) throws Exception {
+        Object result = method.invoke(bean, args);
+        String name = beanAnn.value().isEmpty() ? method.getName() : beanAnn.value();
+        beanContainer.register(name, result);
     }
 
     private void registerWebSocketEndpoint(Class<?> clazz) {
@@ -248,8 +283,8 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
                 final String fullPath = combinePath(basePath, routeInfo.getPath());
 
                 // Pre-compute parameter kinds at scan time
-                java.lang.reflect.Method endpointMethod = routeInfo.getMethod();
-                java.lang.reflect.Parameter[] params = endpointMethod.getParameters();
+                Method endpointMethod = routeInfo.getMethod();
+                Parameter[] params = endpointMethod.getParameters();
                 final int[] argKinds = new int[params.length];
                 final Class<?>[] argBodyTypes = new Class<?>[params.length];
                 boolean hasBody = false;
@@ -284,9 +319,11 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
                     handler = new HttpRoute() {
                         @Override
                         public void handle(String p, HttpRequest request, HttpResponse response) throws Throwable {
-                            Object result = bound.invokeExact((HttpRequest) request, (HttpResponse) response);
                             if (hasResponseBody) {
+                                Object result = bound.invoke((HttpRequest) request, (HttpResponse) response);
                                 messageConverter.write(result, converterConfig, response);
+                            } else {
+                                bound.invokeExact((HttpRequest) request, (HttpResponse) response);
                             }
                         }
                     };
@@ -330,18 +367,7 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
                 MethodHandle mh = MethodHandles.lookup().unreflect(routeInfo.getMethod());
                 final MethodHandle bound = MethodHandles.insertArguments(mh, 0, controller);
 
-                sse(fullPath, new SseHandler() {
-                    @Override
-                    public void handle(SseEmitter emitter) throws Exception {
-                        try {
-                            bound.invokeExact(emitter);
-                        } catch (Exception e) {
-                            throw e;
-                        } catch (Throwable t) {
-                            throw new RuntimeException(t);
-                        }
-                    }
-                });
+                sse(fullPath, emitter -> bound.invokeExact(emitter));
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to register controller: " + clazz.getName(), e);
@@ -358,29 +384,41 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
 
     private Object resolveControllerInstance(Class<?> clazz) throws Exception {
         Constructor<?>[] constructors = clazz.getConstructors();
-        Constructor<?> ctor = (constructors.length > 0) ? constructors[0] : null;
+        Constructor<?> ctor = constructors.length > 0 ? constructors[0] : null;
+        if (ctor == null) return clazz.newInstance();
+        Parameter[] params = ctor.getParameters();
+        if (params.length == 0) return clazz.newInstance();
+        Object[] args = resolveParameters(params, clazz.getName());
+        return ctor.newInstance(args);
+    }
 
-        if (ctor == null) {
-            // Use the default constructor
-            return clazz.newInstance();
-        }
-
-        Class<?>[] paramTypes = ctor.getParameterTypes();
-        if (paramTypes.length == 0) {
-            return clazz.newInstance();
-        }
-
-        Object[] args = new Object[paramTypes.length];
-        for (int i = 0; i < paramTypes.length; i++) {
-            args[i] = beanContainer.getBean(paramTypes[i]);
+    /**
+     * Resolve method/constructor parameters supporting {@code @Value}, {@code @Inject(name)},
+     * or by-type lookup from the container.
+     */
+    /** @return args if all resolved, or null if any @Inject dependency is not yet available */
+    private Object[] resolveParameters(Parameter[] params, String context) {
+        Object[] args = new Object[params.length];
+        for (int i = 0; i < params.length; i++) {
+            Parameter param = params[i];
+            Value valueAnn = param.getAnnotation(Value.class);
+            if (valueAnn != null) {
+                args[i] = beanContainer.resolveValue(valueAnn.value(), param.getType());
+                continue;
+            }
+            Inject injectAnn = param.getAnnotation(Inject.class);
+            if (injectAnn != null && !injectAnn.value().isEmpty()) {
+                args[i] = beanContainer.getBean(injectAnn.value());
+            } else {
+                args[i] = beanContainer.getBean(param.getType());
+            }
             if (args[i] == null) {
-                throw new RuntimeException(
-                        "Cannot resolve dependency '" + paramTypes[i].getSimpleName()
-                                + "' for " + clazz.getName()
-                                + ". Make sure the dependency is annotated with @Component.");
+                if (injectAnn != null) return null; // deferrable
+                throw new RuntimeException("Cannot resolve dependency '"
+                        + param.getType().getSimpleName() + "' for " + context);
             }
         }
-        return ctor.newInstance(args);
+        return args;
     }
 
     protected ConverterConfig buildConverterConfig(MethodRouteInfo routeInfo) {
@@ -391,8 +429,8 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
     private static final int KIND_RESPONSE = 1;
     private static final int KIND_BODY = 2;
 
-    private boolean hasResponseBodyAnnotation(java.lang.reflect.Method method) {
-        for (java.lang.annotation.Annotation ann : method.getAnnotations()) {
+    private boolean hasResponseBodyAnnotation(Method method) {
+        for (Annotation ann : method.getAnnotations()) {
             for (Class<?> cfg : responseBodyAnnotations) {
                 if (cfg.equals(ann.annotationType())) return true;
             }
@@ -400,8 +438,8 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
         return false;
     }
 
-    private boolean isRequestBodyParam(java.lang.reflect.Parameter param) {
-        for (java.lang.annotation.Annotation ann : param.getAnnotations()) {
+    private boolean isRequestBodyParam(Parameter param) {
+        for (Annotation ann : param.getAnnotations()) {
             for (Class<?> cfg : requestBodyAnnotations) {
                 if (cfg.equals(ann.annotationType())) return true;
             }
@@ -501,12 +539,6 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
     public void clear() {
         super.clear();
         beanContainer.clear();
-    }
-
-    /**
-     * Expose the internal bean container for framework-level access.
-     */
-    BeanContainer getBeanContainer() {
-        return beanContainer;
+        processedConfigBeans.clear();
     }
 }

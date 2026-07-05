@@ -3,9 +3,12 @@ package io.github.wycst.wastnet.http.annotation;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -18,7 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class BeanContainer {
 
-    private final Map<String, Object> beans = new ConcurrentHashMap<String, Object>();
+    private final Map<String, Object> beansByName = new ConcurrentHashMap<String, Object>();
+    private final Map<Class<?>, Object> beansByType = new ConcurrentHashMap<Class<?>, Object>();
     private final Map<String, String> config = new HashMap<String, String>();
 
     // Pluggable annotation classes (default to framework's own)
@@ -26,20 +30,43 @@ public class BeanContainer {
     private Class<?>[] postConstructAnnotations = new Class<?>[]{PostConstruct.class};
     private Class<?>[] preDestroyAnnotations = new Class<?>[]{PreDestroy.class};
 
+    // ── Deferred field injection ──
+
+    private final List<Runnable> deferredFields = new ArrayList<Runnable>();
+
     // ── Registration & lifecycle ──
 
     void register(String name, Object instance) throws Exception {
-        beans.put(name, instance);
+        beansByName.put(name, instance);
+        beansByType.put(instance.getClass(), instance);
+        deferredFields.clear();
         injectFields(instance);
         invokeLifecycle(instance, postConstructAnnotations);
     }
 
+    /** Retry deferred field injections; returns true if any remain unresolvable. */
+    boolean retryDeferredFields() {
+        List<Runnable> remaining = new ArrayList<Runnable>();
+        for (Runnable task : deferredFields) {
+            try {
+                task.run();
+            } catch (Exception e) {
+                remaining.add(task);
+            }
+        }
+        deferredFields.clear();
+        deferredFields.addAll(remaining);
+        return !deferredFields.isEmpty();
+    }
+
     void clear() {
-        for (Object bean : beans.values()) {
+        for (Object bean : beansByName.values()) {
             invokeLifecycle(bean, preDestroyAnnotations);
         }
-        beans.clear();
+        beansByName.clear();
+        beansByType.clear();
         config.clear();
+        deferredFields.clear();
     }
 
     // ── Annotation mapping ──
@@ -72,7 +99,7 @@ public class BeanContainer {
                     .getResourceAsStream(resource);
             if (in == null) continue;
             try {
-                java.util.Properties props = new java.util.Properties();
+                Properties props = new Properties();
                 props.load(in);
                 for (String key : props.stringPropertyNames()) {
                     config.put(key, props.getProperty(key));
@@ -87,6 +114,15 @@ public class BeanContainer {
 
     void loadConfig(ConfigLoader loader) {
         loader.load(config);
+    }
+
+    /**
+     * Resolve a {@code @Value} expression ({@code ${key:default}}) to the target type.
+     * Used by {@link AnnotationRouterHandler} for constructor/method parameter injection.
+     */
+    Object resolveValue(String expression, Class<?> targetType) {
+        String raw = resolvePlaceholder(expression);
+        return convertValue(raw, targetType);
     }
 
     // ── Field injection ──
@@ -110,13 +146,29 @@ public class BeanContainer {
     }
 
     private void injectDependency(Object bean, Field field) throws Exception {
-        Object dependency = getBean(field.getType());
+        Inject injectAnn = field.getAnnotation(Inject.class);
+        Object dependency = (injectAnn != null && !injectAnn.value().isEmpty())
+                ? getBean(injectAnn.value()) : getBean(field.getType());
         if (dependency == null) {
-            throw new RuntimeException(
-                    "Cannot resolve dependency for field '" + field.getName()
-                            + "' of type " + field.getType().getName()
-                            + " in " + bean.getClass().getName()
-                            + ". Make sure the dependency is annotated with @Component.");
+            deferredFields.add(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Object dep = (injectAnn != null && !injectAnn.value().isEmpty())
+                                ? getBean(injectAnn.value()) : getBean(field.getType());
+                        if (dep != null) {
+                            field.setAccessible(true);
+                            field.set(bean, dep);
+                            return;
+                        }
+                    } catch (Exception ignored) {}
+                    throw new RuntimeException(
+                            "Cannot resolve dependency for field '" + field.getName()
+                                    + "' of type " + field.getType().getName()
+                                    + " in " + bean.getClass().getName());
+                }
+            });
+            return;
         }
         field.setAccessible(true);
         field.set(bean, dependency);
@@ -168,7 +220,9 @@ public class BeanContainer {
         if (targetType == boolean.class || targetType == Boolean.class) return (T) Boolean.valueOf(value);
         if (targetType == double.class || targetType == Double.class) return (T) Double.valueOf(value);
         if (targetType == float.class || targetType == Float.class) return (T) Float.valueOf(value);
-        return (T) value;
+        if (targetType == short.class || targetType == Short.class) return (T) Short.valueOf(value);
+        if (targetType == byte.class || targetType == Byte.class) return (T) Byte.valueOf(value);
+        return null;
     }
 
     // ── Method callbacks ──
@@ -194,18 +248,18 @@ public class BeanContainer {
 
     @SuppressWarnings("unchecked")
     <T> T getBean(Class<T> type) {
-        for (Object bean : beans.values()) {
-            if (type.isInstance(bean)) {
-                return (T) bean;
-            }
-        }
-        return null;
+        return (T) beansByType.get(type);
+    }
+
+    /** Look up a bean by its registration name. */
+    Object getBean(String name) {
+        return beansByName.get(name);
     }
 
     /**
      * Expose all registered bean instances for iteration (e.g. @Bean method scanning).
      */
     Collection<Object> getBeans() {
-        return beans.values();
+        return beansByName.values();
     }
 }

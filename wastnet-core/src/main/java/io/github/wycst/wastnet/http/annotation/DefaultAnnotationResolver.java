@@ -2,6 +2,8 @@ package io.github.wycst.wastnet.http.annotation;
 
 import io.github.wycst.wastnet.http.HttpMethod;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,7 +19,8 @@ public class DefaultAnnotationResolver implements AnnotationResolver {
 
     @Override
     public boolean accept(Class<?> clazz) {
-        return isComponent(clazz) || isController(clazz) || isWebSocketEndpoint(clazz);
+        return isComponent(clazz) || isController(clazz) || isWebSocketEndpoint(clazz)
+                || clazz.isAnnotationPresent(Configuration.class);
     }
 
     @Override
@@ -34,8 +37,8 @@ public class DefaultAnnotationResolver implements AnnotationResolver {
     @Override
     public List<MethodRouteInfo> resolveEndpointRoutes(Class<?> clazz) {
         List<MethodRouteInfo> routes = new ArrayList<MethodRouteInfo>();
-        for (java.lang.reflect.Method method : clazz.getMethods()) {
-            if (java.lang.reflect.Modifier.isStatic(method.getModifiers())) continue;
+        for (Method method : clazz.getMethods()) {
+            if (Modifier.isStatic(method.getModifiers())) continue;
             Endpoint ann = method.getAnnotation(Endpoint.class);
             if (ann != null && !ann.value().isEmpty()) {
                 routes.add(new MethodRouteInfo(ann.value(), ann.allowMethods(), method, Endpoint.class));
@@ -47,8 +50,8 @@ public class DefaultAnnotationResolver implements AnnotationResolver {
     @Override
     public List<MethodRouteInfo> resolveSseEndpoints(Class<?> clazz) {
         List<MethodRouteInfo> endpoints = new ArrayList<MethodRouteInfo>();
-        for (java.lang.reflect.Method method : clazz.getMethods()) {
-            if (java.lang.reflect.Modifier.isStatic(method.getModifiers())) continue;
+        for (Method method : clazz.getMethods()) {
+            if (Modifier.isStatic(method.getModifiers())) continue;
             Sse ann = method.getAnnotation(Sse.class);
             if (ann != null && !ann.value().isEmpty()) {
                 endpoints.add(new MethodRouteInfo(ann.value(), new HttpMethod[0], method, Sse.class));

@@ -15,6 +15,7 @@ import io.github.wycst.wastnet.socket.handler.IdleStateHandler;
 import io.github.wycst.wastnet.socket.tcp.ChannelContext;
 import io.github.wycst.wastnet.socket.tcp.ConnectionFilter;
 import io.github.wycst.wastnet.socket.tcp.NioConfig;
+import io.github.wycst.wastnet.socket.tcp.PEMSSLContextFactory;
 import io.github.wycst.wastnet.socket.tcp.SSLContextFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -415,5 +416,47 @@ public class SmallClassCoverageTest {
                 .startupBannerEnabled(false)
                 .start();
         s.shutdown();
+    }
+
+    // ==================== HttpMethod ====================
+
+    @Test
+    public void testHttpMethodFromString() {
+        assertSame(HttpMethod.GET, HttpMethod.fromString("GET"));
+        assertSame(HttpMethod.POST, HttpMethod.fromString("POST"));
+        assertNull(HttpMethod.fromString(null));
+        assertNull(HttpMethod.fromString("INVALID"));
+    }
+
+    // ==================== HttpBodyDefaultDecoder ====================
+
+    @Test
+    public void testHttpBodyDefaultDecoderBasic() {
+        byte[] query = "key1=value1&key2=value2".getBytes();
+        // form-urlencoded content type
+        HttpBodyDefaultDecoder decoder = new HttpBodyDefaultDecoder("application/x-www-form-urlencoded", query);
+        decoder.release();
+        // multipart content type
+        byte[] empty = new byte[0];
+        HttpBodyDefaultDecoder decoder2 = new HttpBodyDefaultDecoder("multipart/form-data; boundary=--boundary", empty);
+        decoder2.release();
+    }
+
+    // ==================== PEMSSLContextFactory ====================
+
+    @Test
+    public void testPemSslFactoryConstructors() {
+        PEMSSLContextFactory f1 = new PEMSSLContextFactory("cert/cert.pem", "cert/server.pem");
+        assertNotNull(f1);
+        PEMSSLContextFactory f2 = new PEMSSLContextFactory("cert/cert.pem", "cert/server.pem", null);
+        assertNotNull(f2);
+        PEMSSLContextFactory f3 = new PEMSSLContextFactory("cert/cert.pem", "cert/server.pem", null, "cert/cert.pem");
+        assertNotNull(f3);
+    }
+
+    @Test
+    public void testPemSslFactoryCreateInvalidPath() {
+        PEMSSLContextFactory factory = new PEMSSLContextFactory("nonexistent/cert.pem", "nonexistent/key.pem");
+        assertThrows(RuntimeException.class, factory::create);
     }
 }

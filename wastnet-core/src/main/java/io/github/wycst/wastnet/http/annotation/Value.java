@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
  *
  * @author wangyc
  */
-@Target(ElementType.FIELD)
+@Target({ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Value {
     /** The configuration key, optionally with a default: {@code ${key:default}}. */

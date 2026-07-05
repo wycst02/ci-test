@@ -26,13 +26,11 @@ class MultipartFieldFile extends MultipartField {
     }
 
     @Override
-    @SuppressWarnings("all")
     public InputStream getInputStream() throws IOException {
         return new FileInputStream(tempFile);
     }
 
     @Override
-    @SuppressWarnings("all")
     public void transferTo(File file, boolean append) throws IOException {
         FileChannel inputChannel = null;
         FileChannel outputChannel = null;

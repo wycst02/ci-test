@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.JarURLConnection;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -74,14 +73,7 @@ public class PackageScanner {
                                      Set<Class<?>> classes, AnnotationFilter filter, ClassLoader cl) throws Exception {
         String protocol = resource.getProtocol();
         if ("file".equals(protocol)) {
-            String filePath = resource.getFile();
-            int sep = filePath.indexOf('!');
-            if (sep > -1) {
-                // file:/path/to/a.jar!/com/example
-                scanJar(filePath.substring(0, sep), packagePath, classes, filter, cl);
-            } else {
-                scanDirectory(new File(resource.toURI()), packageName, classes, filter, cl);
-            }
+            scanDirectory(new File(resource.toURI()), packageName, classes, filter, cl);
         } else if ("jar".equals(protocol)) {
             scanJarResource(resource, packagePath, classes, filter, cl);
         }
@@ -91,22 +83,6 @@ public class PackageScanner {
                                         Set<Class<?>> classes, AnnotationFilter filter, ClassLoader cl) throws IOException {
         JarURLConnection conn = (JarURLConnection) resource.openConnection();
         JarFile jar = conn.getJarFile();
-        try {
-            scanJar(jar, packagePath, classes, filter, cl);
-        } finally {
-            jar.close();
-        }
-    }
-
-    private static void scanJar(String jarPath, String packagePath,
-                                Set<Class<?>> classes, AnnotationFilter filter, ClassLoader cl) throws IOException {
-        // Strip leading "file:" if present
-        if (jarPath.startsWith("file:")) {
-            jarPath = jarPath.substring(5);
-        }
-        // Decode URL encoding (e.g. %20 for spaces)
-        jarPath = URLDecoder.decode(jarPath, "UTF-8");
-        JarFile jar = new JarFile(jarPath);
         try {
             scanJar(jar, packagePath, classes, filter, cl);
         } finally {

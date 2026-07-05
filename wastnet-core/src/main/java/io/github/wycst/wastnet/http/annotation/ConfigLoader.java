@@ -1,5 +1,7 @@
 package io.github.wycst.wastnet.http.annotation;
 
+import java.util.Map;
+
 /**
  * Pluggable configuration loader.
  * <p>
@@ -14,5 +16,5 @@ public interface ConfigLoader {
      *
      * @param config mutable configuration map to populate
      */
-    void load(java.util.Map<String, String> config);
+    void load(Map<String, String> config);
 }

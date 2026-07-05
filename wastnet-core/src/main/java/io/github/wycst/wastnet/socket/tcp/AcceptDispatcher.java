@@ -89,7 +89,7 @@ class AcceptDispatcher extends Thread {
         try {
             handleAccept();
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.error("Accept dispatcher error: {}", e.getMessage(), e);
         }
     }
 }

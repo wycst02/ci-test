@@ -6,13 +6,17 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a field for dependency injection.
+ * Marks a field or parameter for dependency injection.
  * <p>
- * The field's type is used to look up a matching bean from the container.
+ * By default, the field/parameter type is used to look up a bean from the container.
+ * Specify {@link #value()} to look up by name (e.g. for multiple beans of the same type).
  *
  * @author wangyc
  */
-@Target(ElementType.FIELD)
+@Target({ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Inject {
+
+    /** Bean name qualifier; empty means lookup by type. */
+    String value() default "";
 }
