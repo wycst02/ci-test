@@ -3,10 +3,8 @@ package io.github.wycst.wastnet.http.annotation;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,33 +28,26 @@ public class BeanContainer {
     private Class<?>[] postConstructAnnotations = new Class<?>[]{PostConstruct.class};
     private Class<?>[] preDestroyAnnotations = new Class<?>[]{PreDestroy.class};
 
-    // ── Deferred field injection ──
-
-    private final List<Runnable> deferredFields = new ArrayList<Runnable>();
-
     // ── Registration & lifecycle ──
 
-    void register(String name, Object instance) throws Exception {
+    /** Register a bean into the container without field injection or lifecycle. */
+    void register(String name, Object instance) {
         beansByName.put(name, instance);
         beansByType.put(instance.getClass(), instance);
-        deferredFields.clear();
-        injectFields(instance);
-        invokeLifecycle(instance, postConstructAnnotations);
     }
 
-    /** Retry deferred field injections; returns true if any remain unresolvable. */
-    boolean retryDeferredFields() {
-        List<Runnable> remaining = new ArrayList<Runnable>();
-        for (Runnable task : deferredFields) {
-            try {
-                task.run();
-            } catch (Exception e) {
-                remaining.add(task);
-            }
+    /** Inject fields on all registered beans (dependencies are already in the container). */
+    void injectAllFields() throws Exception {
+        for (Object bean : beansByName.values()) {
+            injectFields(bean);
         }
-        deferredFields.clear();
-        deferredFields.addAll(remaining);
-        return !deferredFields.isEmpty();
+    }
+
+    /** Invoke @PostConstruct on all registered beans (call after injection is complete). */
+    void invokeAllPostConstruct() {
+        for (Object bean : beansByName.values()) {
+            invokeLifecycle(bean, postConstructAnnotations);
+        }
     }
 
     void clear() {
@@ -66,7 +57,6 @@ public class BeanContainer {
         beansByName.clear();
         beansByType.clear();
         config.clear();
-        deferredFields.clear();
     }
 
     // ── Annotation mapping ──
@@ -150,25 +140,11 @@ public class BeanContainer {
         Object dependency = (injectAnn != null && !injectAnn.value().isEmpty())
                 ? getBean(injectAnn.value()) : getBean(field.getType());
         if (dependency == null) {
-            deferredFields.add(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Object dep = (injectAnn != null && !injectAnn.value().isEmpty())
-                                ? getBean(injectAnn.value()) : getBean(field.getType());
-                        if (dep != null) {
-                            field.setAccessible(true);
-                            field.set(bean, dep);
-                            return;
-                        }
-                    } catch (Exception ignored) {}
-                    throw new RuntimeException(
-                            "Cannot resolve dependency for field '" + field.getName()
-                                    + "' of type " + field.getType().getName()
-                                    + " in " + bean.getClass().getName());
-                }
-            });
-            return;
+            throw new RuntimeException(
+                    "Cannot resolve dependency for field '" + field.getName()
+                            + "' of type " + field.getType().getName()
+                            + " in " + bean.getClass().getName()
+                            + ". Make sure the dependency is annotated with @Component.");
         }
         field.setAccessible(true);
         field.set(bean, dependency);

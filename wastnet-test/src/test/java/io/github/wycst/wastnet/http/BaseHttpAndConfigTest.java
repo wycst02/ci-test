@@ -84,6 +84,18 @@ class BaseHttpAndConfigTest {
         assertTrue(RuntimeEnv.JDK9PLUS || !RuntimeEnv.JDK9PLUS);
     }
 
+    // ==================== HttpMessageDecoder ====================
+
+    @Test
+    void testHttpMessageDecoderByteBufferThrows() {
+        // HttpMessageDecoder.decode(ChannelContext, ByteBuffer) is final and throws
+        HttpMessageDecoder decoder = new HttpMessageDecoder() {
+            @Override public void decode(byte[] buf, int offset, int len, ChannelContext ctx) {}
+        };
+        assertThrows(UnsupportedOperationException.class,
+                () -> decoder.decode(null, null));
+    }
+
     // ==================== Helper ====================
 
     private static HttpRequest createRequest(ChannelContext ctx) {

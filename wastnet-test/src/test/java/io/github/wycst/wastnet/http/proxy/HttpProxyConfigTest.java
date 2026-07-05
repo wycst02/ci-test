@@ -237,4 +237,20 @@ public class HttpProxyConfigTest {
         });
         config.setRewriteRule(HttpProxyConfig.RewriteRule.IDENTITY);
     }
+
+    @Test
+    public void testRewriteWithNullFunction() {
+        // rewrite(null) should be no-op
+        HttpProxyConfig config = HttpProxyConfig.target("http://localhost");
+        config.rewrite((HttpProxyConfig.RewriteFunction) null);
+        Assertions.assertNull(config.rewriteRule);
+    }
+
+    @Test
+    public void testSetRewriteNull() {
+        // setRewrite(null) should clear the rule
+        HttpProxyConfig config = HttpProxyConfig.target("http://localhost");
+        config.setRewrite(null);
+        Assertions.assertNull(config.rewriteRule);
+    }
 }

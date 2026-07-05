@@ -286,16 +286,15 @@ public class AnnotationPackageCoverageTest {
         c.setInjectAnnotations(new Class<?>[]{Inject.class});
         c.register("dep", new TestDependency());
         c.register("dependent", new DependentBean());
+        c.injectAllFields();
         assertNotNull(c.getBean(DependentBean.class));
     }
 
     @Test public void testInjectDependency_missing() throws Exception {
         BeanContainer c = new BeanContainer();
         c.setInjectAnnotations(new Class<?>[]{Inject.class});
-        // Register DependentBean WITHOUT registering TestDependency first -> deferred
         c.register("dependent", new DependentBean());
-        // Retry should still fail
-        assertTrue(c.retryDeferredFields());
+        assertThrows(RuntimeException.class, c::injectAllFields);
     }
 
     // ==================== BeanContainer - loadProperties ====================
@@ -316,6 +315,7 @@ public class AnnotationPackageCoverageTest {
         c.setInjectAnnotations(new Class<?>[]{null, Inject.class});
         c.register("dep", new TestDependency());
         c.register("dependent", new DependentBean());
+        c.injectAllFields();
         assertNotNull(c.getBean(DependentBean.class));
     }
 
@@ -408,7 +408,8 @@ public class AnnotationPackageCoverageTest {
     @Test public void testInvokeLifecycleException() {
         BeanContainer c = new BeanContainer();
         c.setPostConstructAnnotations(new Class<?>[]{PostConstruct.class});
-        assertThrows(RuntimeException.class, () -> c.register("fail", new LifecycleExceptionBean()));
+        c.register("fail", new LifecycleExceptionBean());
+        assertThrows(RuntimeException.class, c::invokeAllPostConstruct);
     }
 
     // ==================== AnnotationRouterHandler ====================

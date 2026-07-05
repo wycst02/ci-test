@@ -324,4 +324,34 @@ class WebSocketDecoderCoverageTest {
         assertTrue(getErrorMessage(1002).contains("Protocol Error"));
         assertTrue(getErrorMessage(1009).contains("Message Too Big"));
     }
+
+    // ===== L155: rem == 0 (fin=false, buffer exactly consumed) =====
+
+    @Test
+    void testLine155RemZero() throws Exception {
+        // Send a fin=false fragment alone so the buffer is fully consumed.
+        // After processing, rem==0 at line 155 → i=0. The loop then reads
+        // the remaining data (frame2) from the mock.
+        byte[] frame1 = frame(false, 0x1, "hello".getBytes());
+        byte[] frame2 = frame(true, 0x0, " world".getBytes());
+        byte[] all = WebSocketDecoderTest.concat(frame1, frame2);
+        int frame1Len = frame1.length;
+
+        final int[] readOffset = {frame1Len};
+        doAnswer(inv -> {
+            byte[] buf = inv.getArgument(0);
+            int off = inv.getArgument(1);
+            int len = inv.getArgument(2);
+            int avail = all.length - readOffset[0];
+            if (avail <= 0) return -1;
+            int toCopy = Math.min(len, avail);
+            System.arraycopy(all, readOffset[0], buf, off, toCopy);
+            readOffset[0] += toCopy;
+            return toCopy;
+        }).when(ctx).readFully(any(byte[].class), anyInt(), anyInt(), anyLong());
+
+        decoder.decode(frame1, 0, frame1Len, ctx);
+        assertEquals(1, capturedFrames.size());
+        assertEquals("hello world", new String(capturedFrames.get(0).getData()));
+    }
 }

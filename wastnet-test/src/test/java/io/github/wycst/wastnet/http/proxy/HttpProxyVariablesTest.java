@@ -169,4 +169,49 @@ public class HttpProxyVariablesTest {
         Assertions.assertFalse(HttpProxyVariables.containsVariable("plain"));
         Assertions.assertFalse(HttpProxyVariables.containsVariable(null));
     }
+
+    // ==================== Char range coverage (L154) ====================
+
+    @Test
+    void testResolveVariableWithDigitsInName() {
+        // Variable extraction with digits: $host123 → word chars include digits
+        // ":" stops extraction after "https"
+        HttpRequest req = mockRequest("example.com", "https", null, null, null, null, null);
+        String resolved = HttpProxyVariables.resolve("$scheme://$host123/path", req);
+        // $host123 is not in BUILTINS → kept as raw, $scheme resolves
+        Assertions.assertEquals("https://$host123/path", resolved);
+    }
+
+    @Test
+    void testResolveVariableWithUppercaseName() {
+        // Variable extraction with uppercase: $HOST is matched as whole name
+        HttpRequest req = mockRequest("example.com", "https", null, null, null, null, null);
+        String resolved = HttpProxyVariables.resolve("prefix.$Host.suffix", req);
+        // $Host not in BUILTINS → kept as raw
+        Assertions.assertEquals("prefix.$Host.suffix", resolved);
+    }
+
+    // ==================== Null resolver branch (L165) ====================
+
+    @Test
+    void testResolveProviderReturnsNull() throws Exception {
+        // Insert a resolver that returns null into BUILTINS via reflection
+        java.lang.reflect.Field builtinsField = HttpProxyVariables.class.getDeclaredField("BUILTINS");
+        builtinsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, HttpProxyConfig.HeaderValueResolver> map =
+                (java.util.Map<String, HttpProxyConfig.HeaderValueResolver>) builtinsField.get(null);
+        HttpProxyConfig.HeaderValueResolver nullResolver = new HttpProxyConfig.HeaderValueResolver() {
+            public String resolve(HttpRequest request) { return null; }
+        };
+        map.put("$nullvar", nullResolver);
+        try {
+            HttpRequest req = mock(HttpRequest.class);
+            // Slow path with $nullvar returning null → appends "" (L165 else branch)
+            String resolved = HttpProxyVariables.resolve("x$nullvar", req);
+            Assertions.assertEquals("x", resolved);
+        } finally {
+            map.remove("$nullvar");
+        }
+    }
 }

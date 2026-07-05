@@ -155,11 +155,19 @@ public class AnnotationRouterHandler extends HttpRouterHandler {
                 }
             }
         }
+        // Phase 2: @Bean methods — register results into the container
         processBeanMethods();
-        // Retry deferred @Inject field injections (dependencies from @Bean results)
-        beanContainer.retryDeferredFields();
+        // Phase 3: register controllers and websocket endpoints (as beans)
         for (Class<?> c : allControllers) registerController(c);
         for (Class<?> c : allWebSocketClasses) registerWebSocketEndpoint(c);
+        // Phase 4: bulk field injection — all beans (components + @Bean + controllers) now in container
+        try {
+            beanContainer.injectAllFields();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to inject bean fields", e);
+        }
+        // Phase 5: @PostConstruct on all beans — after injection is complete
+        beanContainer.invokeAllPostConstruct();
         return this;
     }
 
