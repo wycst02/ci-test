@@ -1,16 +1,25 @@
 package io.github.wycst.wastnet.http;
 
+import io.github.wycst.wastnet.http.handler.HttpExceptionHandler;
+import io.github.wycst.wastnet.http.handler.HttpRequestHandler;
 import io.github.wycst.wastnet.http.proxy.H2H1ProxyAdapter;
 import io.github.wycst.wastnet.http.proxy.HttpProxyConnection;
 import io.github.wycst.wastnet.http.proxy.HttpProxyWorker;
 import io.github.wycst.wastnet.http.reader.HttpChannelProtocolReader;
 import io.github.wycst.wastnet.http.reader.HttpMessageReader;
+import io.github.wycst.wastnet.http.upgrade.UpgradeHandler;
 import io.github.wycst.wastnet.http.upgrade.UpgradeHolder;
+import io.github.wycst.wastnet.socket.channel.ChannelReader;
+import io.github.wycst.wastnet.socket.handler.ChannelHandler;
+import io.github.wycst.wastnet.socket.handler.IdleStateHandler;
 import io.github.wycst.wastnet.socket.tcp.ChannelContext;
+import io.github.wycst.wastnet.socket.tcp.ConnectionFilter;
 import io.github.wycst.wastnet.socket.tcp.NioConfig;
+import io.github.wycst.wastnet.socket.tcp.SSLContextFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.net.ssl.SSLContext;
 import java.io.File;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -333,5 +342,78 @@ public class SmallClassCoverageTest {
         } finally {
             serverChannel.close();
         }
+    }
+
+    // ==================== HTTPServer ====================
+
+    @Test
+    public void testHttpserverFactoryWithConfig() {
+        NioConfig nc = new NioConfig();
+        HTTPServer s = HTTPServer.of(50001, nc);
+        assertNotNull(s);
+        s.shutdown();
+    }
+
+    @Test
+    public void testHttpserverBuilderChains() {
+        NioConfig nc = new NioConfig();
+        HTTPServer s = HTTPServer.of(50002, nc)
+                .ssl(true)
+                .sslContext(mock(SSLContext.class))
+                .sslContextFactory(mock(SSLContextFactory.class))
+                .config(nc)
+                .bufferSize(1024)
+                .workerNum(1)
+                .printSSLErrorLog(true)
+                .printReadErrorLog(false)
+                .printApplicationMessage(true)
+                .printStackTraceError(false)
+                .localOnly(true)
+                .exceptionHandler(mock(HttpExceptionHandler.class))
+                .channelReader(mock(ChannelReader.class))
+                .channelHandler(mock(ChannelHandler.class))
+                .idleStateHandler(mock(IdleStateHandler.class))
+                .connectionFilter(mock(ConnectionFilter.class))
+                .upgradeHandler(mock(UpgradeHandler.class))
+                .sslCipherSuites("TLS_AES_128_GCM_SHA256");
+        assertNotNull(s);
+        s.shutdown();
+    }
+
+    @Test
+    public void testHttpserverUpgradeHandler() {
+        HTTPServer s = HTTPServer.of(50003).localOnly(true)
+                .requestHandler(mock(HttpRequestHandler.class))
+                .start();
+        assertNotNull(s.upgradeHandler());
+        s.shutdown();
+    }
+
+    @Test
+    public void testHttpserverH2AndAlpn() {
+        HTTPServer s = HTTPServer.of(50004)
+                .h2()
+                .applicationProtocols("h2", "http/1.1")
+                .startupBannerEnabled(false)
+                .start();
+        s.shutdown();
+    }
+
+    @Test
+    public void testHttpserverNonLocal() {
+        HTTPServer s = HTTPServer.of(50005)
+                .requestHandler(mock(HttpRequestHandler.class))
+                .start();
+        s.shutdown();
+    }
+
+    @Test
+    public void testHttpserverPemSsl() {
+        HTTPServer s = HTTPServer.of(50006)
+                .pemSSL("classpath:cert/cert.pem", "classpath:cert/server.pem")
+                .h2()
+                .startupBannerEnabled(false)
+                .start();
+        s.shutdown();
     }
 }
