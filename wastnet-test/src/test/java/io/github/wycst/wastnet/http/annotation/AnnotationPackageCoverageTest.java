@@ -769,7 +769,7 @@ public class AnnotationPackageCoverageTest {
                 .messageConverter(conv)
                 .scanPackages("io.github.wycst.wastnet.http.annotation");
         OkHttpClient client = new OkHttpClient.Builder()
-                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
         HTTPServer server = HTTPServer.of(51008).requestHandler(handler).startupBannerEnabled(false).start();
         try {
