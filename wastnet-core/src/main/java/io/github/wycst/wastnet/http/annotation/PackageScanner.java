@@ -18,7 +18,12 @@ import java.util.jar.JarFile;
  */
 public class PackageScanner {
 
-    private static final AnnotationFilter FILTER_ACCEPT_ALL = clazz -> true;
+    private static final AnnotationFilter FILTER_ACCEPT_ALL = new AnnotationFilter() {
+        @Override
+        public boolean accept(Class<?> clazz) {
+            return true;
+        }
+    };
 
     /**
      * Scan the given package and return all class files found.

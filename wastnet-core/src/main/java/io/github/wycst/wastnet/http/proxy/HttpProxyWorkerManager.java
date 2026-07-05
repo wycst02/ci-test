@@ -16,6 +16,7 @@ public class HttpProxyWorkerManager {
     static final HttpProxyWorkerManager INSTANCE = new HttpProxyWorkerManager();
 
     static final ScheduledExecutorService timeoutScheduler = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
+        @Override
         public Thread newThread(Runnable r) {
             Thread t = new Thread(r, "proxy-read-timeout");
             t.setDaemon(true);

@@ -763,10 +763,28 @@ public class ChannelContext {
         this.attachment = attachment;
     }
 
+    /**
+     * Returns the binding object attached to this context.
+     * <p>
+     * The binding is an immutable once-set attachment used for protocol upgrade
+     * (e.g., WebSocket upgrade holder). Once set, it cannot be changed.
+     *
+     * @return the binding object, or null if not set
+     */
     public Object binding() {
         return binding;
     }
 
+    /**
+     * Attaches a binding object to this context.
+     * <p>
+     * The binding is immutable once set — subsequent calls will throw
+     * {@link IllegalStateException}. Used for protocol upgrade scenarios
+     * such as WebSocket and h2c upgrade holders.
+     *
+     * @param binding the binding object to attach
+     * @throws IllegalStateException if binding is already set
+     */
     public void binding(Object binding) {
         if (this.binding != null) {
             throw new IllegalStateException("Binding is immutable once set");

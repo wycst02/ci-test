@@ -1,0 +1,28 @@
+# 发布前修改计划
+
+## 1. HttpHeaderNames / HttpHeaderValues 精简
+
+删除生产代码中未使用的常量，保留被引用的部分：
+
+- HttpHeaderNames: 85→16 个（保留 CACHE_CONTROL、CONNECTION、CONTENT_ENCODING、CONTENT_LENGTH、CONTENT_TYPE、DATE、ETAG、HOST、KEEP_ALIVE、LAST_MODIFIED、SEC_WEBSOCKET_ACCEPT、SEC_WEBSOCKET_PROTOCOL、SEC_WEBSOCKET_VERSION、SERVER、TRANSFER_ENCODING、UPGRADE）
+- HttpHeaderValues: 60→20 个（保留 APPLICATION_JSON、APPLICATION_OCTET_STREAM、APPLICATION_XHTML、APPLICATION_XML、APPLICATION_X_WWW_FORM_URLENCODED、CHUNKED、CLOSE、CONTINUE、GZIP、H2C、KEEP_ALIVE、MULTIPART_FORM_DATA、NO_CACHE、TEXT_CSS、TEXT_EVENT_STREAM_UTF8、TEXT_HTML、TEXT_JSON、TEXT_PLAIN、UPGRADE、WEBSOCKET）
+
+将删减前的完整常量类拷贝到测试模块下备份：
+
+- wastnet-test/src/test/java/io/github/wycst/wastnet/http/HttpHeaderNamesBak.java
+- wastnet-test/src/test/java/io/github/wycst/wastnet/http/HttpHeaderValuesBak.java
+
+预期节省：~5 KB
+
+## 2. 匿名类改为 Lambda 表达式
+
+### 可改的（接口类）：
+- AnnotationRouterHandler 中的 new SseHandler() 匿名类 → Lambda
+
+### 不可改的（抽象类，非函数式接口）：
+- new HttpRoute() { ... } 匿名类无法直接替换为 Lambda
+  - 在 AnnotationRouterHandler 中有 2 处
+  - 在 HttpRouterHandler 中有 1 处
+  - HttpRoute 是抽象类，不能作为函数式接口使用
+  
+如需改为 Lambda，需先将 HttpRoute 从 abstract class 改为 interface（breaking change）。

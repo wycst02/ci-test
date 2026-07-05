@@ -41,6 +41,7 @@ public class SseEmitter {
         this.response = response;
         if (ctx != null) {
             ctx.addCloseListener(new Runnable() {
+                @Override
                 public void run() {
                     closed = true;
                     closeLatch.countDown();

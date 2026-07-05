@@ -41,6 +41,7 @@ public class HttpProxyConnection {
     volatile ScheduledFuture<?> timeoutFuture;
     final Runnable closeListener;
     final Runnable timeoutTask = new Runnable() {
+        @Override
         public void run() {
             if (!dataReceived) {
                 log.error("[HttpProxy] Read timeout for connection {}", connectionId);
@@ -66,6 +67,7 @@ public class HttpProxyConnection {
         this.clientH2 = "h2".equals(clientCtx.getHandShakedApplicationProtocol());
         this.adapter = resolveAdapter(this);
         this.closeListener = new Runnable() {
+            @Override
             public void run() {
                 worker.cleanupConnection(HttpProxyConnection.this);
             }

@@ -1,9 +1,10 @@
 # wastnet
 
-[![Java CI](https://github.com/wycst02/wast-net/actions/workflows/maven.yml/badge.svg)](https://github.com/wycst02/wast-net/actions/workflows/maven.yml)
+[![Java CI](https://github.com/wycst02/wastnet/actions/workflows/maven.yml/badge.svg)](https://github.com/wycst02/wastnet/actions/workflows/maven.yml)
+[![CodeQL](https://github.com/wycst02/wastnet/actions/workflows/codeql.yml/badge.svg)](https://github.com/wycst02/wastnet/actions/workflows/codeql.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Java](https://img.shields.io/badge/Java-8-green.svg)](https://www.oracle.com/java/)
-[![codecov](https://codecov.io/gh/wycst/wast-net/branch/main/graph/badge.svg)](https://codecov.io/gh/wycst/wast-net)
+[![codecov](https://codecov.io/gh/wycst02/wastnet/branch/main/graph/badge.svg)](https://codecov.io/gh/wycst02/wastnet)
 
 **wastnet** is a lightweight, high-performance Java NIO network framework based on the Reactor multi-thread pattern, providing complete TCP and HTTP server/client implementations. Zero third-party dependencies, only relies on JDK.
 
@@ -51,10 +52,7 @@
 
 ## Quick Start
 
-### Requirements
-
-- JDK 8 or higher
-- Maven 3.x
+### Requirements - JDK 8 or higher
 
 > **Note**: HTTP/2 over TLS (h2) requires ALPN negotiation, which needs JDK 9+.
 > HTTP/2 cleartext (h2c / H2_PRIOR_KNOWLEDGE) has no such restriction and works on JDK 8+.
@@ -118,7 +116,7 @@ HTTPServer.of(8443)
 ### WebSocket
 
 ```java
-router.ws("/ws", new WebSocketResource(30) {
+router.ws("/ws", new WebSocketResource(30 /* idle timeout in seconds */) {
     public void onOpen(WebSocketConnection conn) {
         System.out.println("Connected: " + conn.id());
     }

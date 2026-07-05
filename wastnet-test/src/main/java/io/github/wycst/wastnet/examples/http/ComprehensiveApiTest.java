@@ -115,7 +115,7 @@ public class ComprehensiveApiTest {
         private void handleHeadersDemo(HttpRequest request, HttpResponse response) throws Throwable {
             // 添加多种类型的响应头
             response.addHeader("X-Request-ID", String.valueOf(requestCounter.get()));
-            response.addHeader("X-Powered-By", "Wast-Net");
+            response.addHeader("X-Powered-By", "WastNet");
             response.addHeader("Cache-Control", "no-cache");
             response.addHeader("Cache-Control", "no-store");
             response.addHeader("X-Custom-Header", "Custom Value");

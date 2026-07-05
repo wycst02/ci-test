@@ -108,6 +108,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
 
     // ==================== Public Methods ====================
 
+    @Override
     public void addHeader(String key, Serializable value) {
         String normalizedKey = HttpHeaderUtils.normalizeHeaderKey(String.valueOf(key));
         boolean overwriteMode = updateContentFlags(normalizedKey, value, true);
@@ -141,6 +142,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      *
      * @param key the header key
      */
+    @Override
     public void removeHeader(String key) {
         String normalizedKey = HttpHeaderUtils.normalizeHeaderKey(String.valueOf(key));
         updateContentFlags(normalizedKey, null, false);
@@ -200,6 +202,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      *
      * @return true if chunked encoding is enabled, false otherwise
      */
+    @Override
     public boolean isChunked() {
         return chunked;
     }
@@ -210,6 +213,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      * @param chunked true to enable chunked encoding, false to disable
      * @throws IllegalStateException if Content-Length is already set when enabling chunked
      */
+    @Override
     public void setChunked(boolean chunked) {
         if (headersSent) return;
         if (chunked) {
@@ -225,6 +229,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      *
      * @throws IllegalStateException if Content-Length is already set
      */
+    @Override
     public void setChunkedEncoding() {
         if (headersSent) return;
         if (hasExplicitContentLength) {
@@ -239,6 +244,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      * Quick method to remove chunked transfer encoding
      * Automatically disables chunked mode and removes related headers
      */
+    @Override
     public void removeChunkedEncoding() {
         if (headersSent) return;
         this.chunked = false;
@@ -407,6 +413,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
         bodyBuf.reset();
     }
 
+    @Override
     public void flush() throws IOException {
         if (isSilentlyUnavailable()) {
             return;  // silently ignore
@@ -443,6 +450,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      *
      * @throws IOException if an I/O error occurs
      */
+    @Override
     public void commit() throws IOException {
         if (isSilentlyUnavailable()) {
             return;  // silently ignore, prevent duplicate submission
@@ -457,6 +465,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
         reset();
     }
 
+    @Override
     protected void reset() {
         os = null;
         headerBuf.reset();
@@ -476,6 +485,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      * @param count  the number of bytes to write
      * @throws IOException if an I/O error occurs during flush
      */
+    @Override
     public void write(byte[] bytes, int offset, int count) throws IOException {
         if (bytes == null || count <= 0)
             return;
@@ -505,6 +515,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      * @throws IOException           if an I/O error occurs
      * @throws IllegalStateException if chunked encoding is not supported or enabled
      */
+    @Override
     public void writeChunked(byte[] data) throws IOException {
         if (isSilentlyUnavailable()) {
             return;  // silently ignore
@@ -546,6 +557,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      *
      * @return true if response is corrupted, false otherwise
      */
+    @Override
     public boolean isCorrupted() {
         return responseState == STATE_CORRUPTED;
     }
@@ -558,6 +570,7 @@ public class HttpDefaultResponse extends HttpGenerativeResponse {
      * Used by proxy request forwarding, resource downloads, and other scenarios where
      * the response sending process is fully managed by internal logic.
      */
+    @Override
     public void handover() {
         responseState = STATE_COMPLETED;
     }

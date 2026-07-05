@@ -4,7 +4,6 @@ import io.github.wycst.wastnet.http.HttpMethod;
 import io.github.wycst.wastnet.http.HttpRequest;
 import io.github.wycst.wastnet.http.HttpResponse;
 import io.github.wycst.wastnet.http.SseEmitter;
-import io.github.wycst.wastnet.http.annotation.Bean;
 import io.github.wycst.wastnet.http.handler.HttpRoute;
 import io.github.wycst.wastnet.http.handler.HttpRouterHandler;
 import io.github.wycst.wastnet.http.handler.SseHandler;

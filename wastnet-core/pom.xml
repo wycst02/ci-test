@@ -10,6 +10,11 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>wastnet-core</artifactId>
+    <packaging>jar</packaging>
+    <name>wastnet-core</name>
+    <description>Lightweight high-performance Java NIO networking framework based on Reactor multi-threaded architecture. Zero external dependencies, provides TCP/HTTP/HTTP2/WebSocket server and client implementations with SSL/TLS support.</description>
+    <url>https://github.com/wycst02/wastnet</url>
+
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>

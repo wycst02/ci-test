@@ -1,7 +1,6 @@
 package io.github.wycst.wastnet.http.annotation;
 
 import io.github.wycst.wastnet.http.HttpMethod;
-import io.github.wycst.wastnet.http.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;

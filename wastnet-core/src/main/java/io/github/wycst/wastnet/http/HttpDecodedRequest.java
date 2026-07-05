@@ -188,6 +188,7 @@ public abstract class HttpDecodedRequest extends HttpInternalRequest {
      * @param key   the header key
      * @param value the header value
      */
+    @Override
     public void setHeader(String key, Serializable value) {
         headers.put(HttpHeaderUtils.normalizeHeaderKey(key), String.valueOf(value));
     }
@@ -197,6 +198,7 @@ public abstract class HttpDecodedRequest extends HttpInternalRequest {
      *
      * @param key the header key
      */
+    @Override
     public void removeHeader(String key) {
         headers.remove(HttpHeaderUtils.normalizeHeaderKey(key));
     }

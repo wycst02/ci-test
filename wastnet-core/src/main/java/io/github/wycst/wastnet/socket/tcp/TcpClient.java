@@ -77,10 +77,12 @@ public class TcpClient<M> extends NioEngine<TcpClient<M>> {
         // Hook auto-reconnect on close (only after success)
         if (autoReconnect) {
             runner.ctx.addCloseListener(new Runnable() {
+                @Override
                 public void run() {
                     if (autoReconnect && connected) {
                         connected = false; // prevent write() using stale runner during reconnect
                         executorService.submit(new Runnable() {
+                            @Override
                             public void run() {
                                 try {
                                     reconnect();

@@ -1,9 +1,10 @@
 # wastnet
 
-[![Java CI](https://github.com/wycst02/wast-net/actions/workflows/maven.yml/badge.svg)](https://github.com/wycst02/wast-net/actions/workflows/maven.yml)
+[![Java CI](https://github.com/wycst02/wastnet/actions/workflows/maven.yml/badge.svg)](https://github.com/wycst02/wastnet/actions/workflows/maven.yml)
+[![CodeQL](https://github.com/wycst02/wastnet/actions/workflows/codeql.yml/badge.svg)](https://github.com/wycst02/wastnet/actions/workflows/codeql.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Java](https://img.shields.io/badge/Java-8-green.svg)](https://www.oracle.com/java/)
-[![codecov](https://codecov.io/gh/wycst/wast-net/branch/main/graph/badge.svg)](https://codecov.io/gh/wycst/wast-net)
+[![codecov](https://codecov.io/gh/wycst02/wastnet/branch/main/graph/badge.svg)](https://codecov.io/gh/wycst02/wastnet)
 
 **wastnet** 是一个轻量级、高性能的 Java NIO 网络通信框架，基于 Reactor 多线程模式设计，提供 TCP 和 HTTP 服务器/客户端的完整实现。零第三方依赖，仅依赖 JDK。
 
@@ -51,10 +52,7 @@
 
 ## 快速开始
 
-### 环境要求
-
-- JDK 8 或更高版本
-- Maven 3.x
+### 环境要求 - JDK 8 或更高版本
 
 > **注**：HTTP/2 over TLS (h2) 基于 ALPN 协议协商，需要 JDK 9+。
 > HTTP/2 cleartext (h2c / H2_PRIOR_KNOWLEDGE) 无此限制，JDK 8 即可使用。
@@ -125,7 +123,7 @@ HTTPServer.of(8443)
 ### WebSocket
 
 ```java
-router.ws("/ws", new WebSocketResource(30) {
+router.ws("/ws", new WebSocketResource(30 /* 空闲超时秒数 */) {
     public void onOpen(WebSocketConnection conn) {
         System.out.println("Connected: " + conn.id());
     }

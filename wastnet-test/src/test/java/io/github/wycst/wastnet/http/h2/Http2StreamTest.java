@@ -271,9 +271,9 @@ public class Http2StreamTest {
         Http2ServerReader mockReader = mock(Http2ServerReader.class);
         Http2Stream ctx = new Http2ServerStream(mockReader, 1, mockCtx);
 
-        Assertions.assertFalse(ctx.handover);
+        Assertions.assertFalse(ctx.handovered);
         ctx.handover();
-        Assertions.assertTrue(ctx.handover);
+        Assertions.assertTrue(ctx.handovered);
     }
 
     // ==================== getInputStream ====================

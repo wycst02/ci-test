@@ -1,3 +1,18 @@
+/*
+ * Copyright 2026, wangyunchao.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.github.wycst.wastnet.http.upgrade.websocket;
 
 import io.github.wycst.wastnet.http.HttpConf;
@@ -48,15 +63,24 @@ public class WebSocketResource extends UpgradeResource {
     // Continuation frame handling strategy
     private ContinuationStrategy continuationStrategy = ContinuationStrategy.MERGE;
 
+    /**
+     * Creates a WebSocket resource with broadcast enabled and no idle timeout.
+     */
     public WebSocketResource() {
         this(true);
     }
 
+    /**
+     * @param broadcast whether to enable message broadcast to all connected clients
+     */
     public WebSocketResource(boolean broadcast) {
         this(broadcast, 0);
     }
 
     /**
+     * Creates a WebSocket resource with a specified idle timeout (in seconds).
+     * When idle timeout expires, the connection is automatically closed.
+     *
      * @param timeout idle timeout in seconds (non-positive means no timeout)
      */
     public WebSocketResource(int timeout) {
@@ -64,14 +88,18 @@ public class WebSocketResource extends UpgradeResource {
     }
 
     /**
+     * Creates a WebSocket resource with a specified idle timeout and timeout handling strategy.
+     *
      * @param timeout         idle timeout in seconds (non-positive means no timeout)
-     * @param timeoutStrategy timeout handling strategy
+     * @param timeoutStrategy timeout handling strategy (DISCONNECT or PING)
      */
     public WebSocketResource(int timeout, TimeoutStrategy timeoutStrategy) {
         this(true, timeout, timeoutStrategy);
     }
 
     /**
+     * Creates a WebSocket resource with broadcast and timeout configuration.
+     *
      * @param broadcast whether to enable broadcast
      * @param timeout   idle timeout in seconds (non-positive means no timeout)
      */
@@ -80,6 +108,8 @@ public class WebSocketResource extends UpgradeResource {
     }
 
     /**
+     * Creates a fully-configured WebSocket resource.
+     *
      * @param broadcast       whether to enable broadcast
      * @param timeout         idle timeout in seconds (non-positive means no timeout)
      * @param timeoutStrategy timeout handling strategy
@@ -90,14 +120,29 @@ public class WebSocketResource extends UpgradeResource {
         this.timeoutStrategy = timeoutStrategy;
     }
 
+    /**
+     * Returns whether broadcast is enabled.
+     *
+     * @return true if broadcast is enabled, false otherwise
+     */
     public boolean enableBroadcast() {
         return broadcast;
     }
 
+    /**
+     * Returns the timeout handling strategy.
+     *
+     * @return the timeout strategy ({@link TimeoutStrategy#DISCONNECT} or {@link TimeoutStrategy#PING})
+     */
     public TimeoutStrategy getTimeoutStrategy() {
         return timeoutStrategy;
     }
 
+    /**
+     * Returns the idle timeout in seconds.
+     *
+     * @return idle timeout in seconds (0 or negative means no timeout)
+     */
     public int getTimeout() {
         return timeout;
     }
@@ -192,6 +237,14 @@ public class WebSocketResource extends UpgradeResource {
     public void onClose(WebSocketConnection connection, int code, String reason) {
     }
 
+    /**
+     * Internal callback when a connection is closed. Unregisters the connection and
+     * delegates to {@link #onClose}.
+     *
+     * @param connection the connection being closed
+     * @param code       WebSocket close status code
+     * @param reason     close reason
+     */
     public final void handleOnClose(WebSocketConnection connection, int code, String reason) {
         if (enableBroadcast()) {
             connectionMap.remove(connection.id());
@@ -199,6 +252,12 @@ public class WebSocketResource extends UpgradeResource {
         onClose(connection, code, reason);
     }
 
+    /**
+     * Called when an error occurs on a WebSocket connection.
+     *
+     * @param connection the connection where the error occurred
+     * @param error      the error
+     */
     public void onError(WebSocketConnection connection, Throwable error) {
     }
 
@@ -316,6 +375,11 @@ public class WebSocketResource extends UpgradeResource {
         }
     }
 
+    /**
+     * Called when a connection is closed abnormally (e.g. connection reset).
+     *
+     * @param connection the connection that was closed abnormally
+     */
     public void onErrorClose(WebSocketConnection connection) {
     }
 
@@ -334,19 +398,42 @@ public class WebSocketResource extends UpgradeResource {
         return supportedSubprotocols;
     }
 
+    /**
+     * Returns the maximum WebSocket payload size allowed for this endpoint.
+     *
+     * @return max payload size in bytes
+     */
     public int getMaxPayloadSize() {
         return maxPayloadSize;
     }
 
+    /**
+     * Sets the maximum WebSocket payload size for this endpoint.
+     * This overrides the global default ({@link io.github.wycst.wastnet.http.HttpConf#MAX_WS_FRAME_SIZE}).
+     *
+     * @param maxPayloadSize max payload size in bytes (capped at Integer.MAX_VALUE)
+     * @return this instance for chaining
+     */
     public WebSocketResource maxPayloadSize(int maxPayloadSize) {
         this.maxPayloadSize = maxPayloadSize;
         return this;
     }
 
+    /**
+     * Returns the continuation frame handling strategy.
+     *
+     * @return the continuation strategy
+     */
     public ContinuationStrategy getContinuationStrategy() {
         return continuationStrategy;
     }
 
+    /**
+     * Sets the continuation frame handling strategy.
+     *
+     * @param strategy the continuation strategy ({@link ContinuationStrategy#MERGE}, {@link ContinuationStrategy#BATCH}, or {@link ContinuationStrategy#STREAM})
+     * @return this instance for chaining
+     */
     public WebSocketResource continuationStrategy(ContinuationStrategy strategy) {
         this.continuationStrategy = strategy;
         return this;

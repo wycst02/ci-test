@@ -44,6 +44,7 @@ public class H2H1ProxyAdapter extends ChannelHandler<Object> implements HttpProx
 
     // ==================== Request: H2 → H1 ====================
 
+    @Override
     public void sendRequest(HttpRequest request, ChannelContext targetCtx) throws Throwable {
         Http2Request h2Request = ((Http2Request) request);
         targetCtx.attachment(h2Request);
@@ -70,6 +71,7 @@ public class H2H1ProxyAdapter extends ChannelHandler<Object> implements HttpProx
 
     // ==================== Response: H1 bytes → decoder ====================
 
+    @Override
     public void onData(ByteBuffer buffer, ChannelContext writeCtx, boolean isTarget, HttpProxyConnection conn) throws IOException {
         if (!isTarget) return;
         byte[] bytes = new byte[buffer.remaining()];

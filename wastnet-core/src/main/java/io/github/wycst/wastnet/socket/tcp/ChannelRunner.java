@@ -63,6 +63,7 @@ class ChannelRunner extends Thread {
     }
 
     static final ChannelHandler<Object> UNDO = new ChannelHandler<Object>() {
+        @Override
         public void onHandle(ChannelContext ctx, Object message) {
         }
     };
