@@ -63,6 +63,7 @@ jobs:
             EXCLUDES="$EXCLUDES,!TcpClientTest"
             EXCLUDES="$EXCLUDES,!SslTlsIntegrationTest"
             EXCLUDES="$EXCLUDES,!ChannelSSLContextTest"
+            EXCLUDES="$EXCLUDES,!AnnotationPackageCoverageTest"
 
           fi
           mvn verify -pl wastnet-test -am --batch-mode -Dsurefire.failIfNoSpecifiedTests=false $EXCLUDES
